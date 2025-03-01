@@ -10,7 +10,6 @@ from urllib.parse import quote  # <-- NEW IMPORT
 
 # --- Add persistent VPN session ---
 def get_vpn_session():
-    # Replace these with your actual NordVPN credentials and proxy-enabled server
     username = "7TCvACC84BTZPPxe4TWCSwks"
     password = "4qgZrr5fgBcH1pCfqFZT4ZVq"
     server = "se.socks.nordhold.net"
