@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"> <!-- added for responsiveness -->
   <title>Latest Summaries</title>
 
   <!-- Bootstrap 5 CSS (CDN) -->
@@ -15,6 +16,8 @@
       background-color: #f8f9fa;
       margin: 0;
       padding: 0;
+      /* Increase base font-size for better readability */
+      font-size: 16px;
     }
     .navbar-brand {
       font-weight: bold;
@@ -23,6 +26,8 @@
     .container {
       max-width: 900px;
       margin: 2rem auto;
+      /* Ensure container is padded on small screens */
+      padding: 0 1rem;
     }
     .article-card {
       margin-bottom: 2rem;
@@ -56,6 +61,29 @@
     .badge-source {
       font-size: 0.75rem;
       background-color: #6c757d;
+    }
+
+    /* Media query for mobile responsiveness */
+    @media (max-width: 576px) {
+      .container {
+        margin: 1rem auto;
+        padding: 0 0.5rem;
+      }
+      .article-card {
+        margin: 1rem 0;
+      }
+      h1 {
+        font-size: 1.75rem;
+      }
+      .article-header h2 {
+        font-size: 1.1rem;
+      }
+      .article-source, .article-date {
+        font-size: 0.9rem;
+      }
+      .accordion-button {
+        font-size: 0.95rem;
+      }
     }
   </style>
 </head>
