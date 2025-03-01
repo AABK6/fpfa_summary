@@ -6,9 +6,72 @@ from google import genai
 from google.genai import types
 import os
 
+# ======= DATABASE IMPORTS AND FUNCTIONS (MINIMAL ADDITION) =======
+import sqlite3
+
+def init_db(db_path="articles.db"):
+    """
+    Creates (if not exists) a table 'articles' for storing article data.
+    Includes a column 'article_text' to store the full text of the article.
+    The URL is declared UNIQUE to skip duplicates.
+    """
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT,
+            url TEXT UNIQUE,
+            title TEXT,
+            author TEXT,
+            article_text TEXT,
+            core_thesis TEXT,
+            detailed_abstract TEXT,
+            supporting_data_quotes TEXT,
+            date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    return conn
+
+def insert_article(conn, source, url, title, author, article_text,
+                   core_thesis, detailed_abstract, supporting_data_quotes):
+    """
+    Inserts an article into the database table 'articles'.
+    Skips if the URL is already present (UNIQUE constraint).
+    """
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO articles
+            (source, url, title, author, article_text,
+             core_thesis, detailed_abstract, supporting_data_quotes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (source, url, title, author, article_text,
+              core_thesis, detailed_abstract, supporting_data_quotes))
+        conn.commit()
+        print(f"Inserted article into DB: {title}")
+    except sqlite3.IntegrityError:
+        # We'll handle pre-existing articles in main() by checking first
+        pass
+
+def get_article_by_url(conn, url):
+    """
+    Returns (title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes) if present,
+    or None if not found.
+    """
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT title, author, article_text, core_thesis,
+               detailed_abstract, supporting_data_quotes
+        FROM articles
+        WHERE url = ?
+    ''', (url,))
+    return cursor.fetchone()
+
 """
 Usage:
-    python combined_scraper_summarizer.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]
+    python summarize_fp.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]
 
 Description:
     - Scrapes article URLs from Foreign Policy listing page.
@@ -29,8 +92,8 @@ def scrape_foreignpolicy_article(url):
         )
     }
     try:
-        response = requests.get(url, headers=headers, timeout=10) # Added timeout
-        response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
         html = response.text
     except requests.exceptions.RequestException as e:
         print(f"Error fetching URL {url}: {e}")
@@ -100,12 +163,10 @@ def scrape_foreignpolicy_article_list(num_links=3):
         return []
 
     html_content = re.sub(r'<script[^>]+(?:piano\.io|cxense\\.com)[^>]+></script>', '', html_content)
-
     soup = BeautifulSoup(html_content, 'html.parser')
+
     article_urls = []
-
     article_containers = soup.find_all('div', class_='blog-list-layout')
-
     for container in article_containers:
         figure_tag = container.find('figure', class_='figure-image')
         if figure_tag:
@@ -163,7 +224,7 @@ def generate_detailed_abstract(client: genai.Client, article: dict) -> str:
     """
     try:
         response = client.models.generate_content(
-            model='gemini-2.0-flash-thinking-exp-01-21', # Use a more stable model if available
+            model='gemini-2.0-flash-thinking-exp-01-21',
             contents=prompt
         )
         return response.text.strip()
@@ -189,7 +250,7 @@ def generate_supporting_data_quotes(client: genai.Client, article: dict) -> str:
     """
     try:
         response = client.models.generate_content(
-            model='gemini-2.0-flash-thinking-exp-01-21', # Use a more stable model if available
+            model='gemini-2.0-flash-thinking-exp-01-21',
             contents=prompt
         )
         return response.text.strip()
@@ -200,7 +261,7 @@ def generate_supporting_data_quotes(client: genai.Client, article: dict) -> str:
 
 def main():
     if len(sys.argv) < 2:
-        num_articles_to_summarize = 3 # Default to 3 articles if no argument is provided
+        num_articles_to_summarize = 3
     else:
         try:
             num_articles_to_summarize = int(sys.argv[1])
@@ -208,7 +269,7 @@ def main():
                 print("Please provide a positive number of articles to summarize.")
                 sys.exit(1)
         except ValueError:
-            print("Usage: python combined_scraper_summarizer.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]")
+            print("Usage: python summarize_fp.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]")
             print("       Please provide a valid integer for the number of articles.")
             sys.exit(1)
 
@@ -218,11 +279,16 @@ def main():
         print("No article URLs found. Exiting.")
         sys.exit(1)
 
+    # === Initialize Database (MINIMAL ADDITION) ===
+    conn = init_db("articles.db")
+
     articles_data = []
     for url in article_urls:
         print(f"Scraping article from: {url}")
         article_data = scrape_foreignpolicy_article(url)
         if article_data:
+            # Attach the URL to the data so we can store and check it
+            article_data["url"] = url
             articles_data.append(article_data)
         else:
             print(f"Failed to scrape article from: {url}")
@@ -231,7 +297,7 @@ def main():
         print("No article data scraped successfully. Exiting.")
         sys.exit(1)
 
-    api_key = os.environ.get("GEMINI_API_KEY") # Get API key from environment variable
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         print("Error: GEMINI_API_KEY environment variable not set.")
         print("Please set your Gemini API key as an environment variable named GEMINI_API_KEY.")
@@ -241,19 +307,48 @@ def main():
 
     print("\n--- Article Summaries ---")
     for article in articles_data:
-        print(f"\n--- ARTICLE: {article['title']} by {article['author']} ---")
+        # Check if article already in DB
+        existing_record = get_article_by_url(conn, article["url"])
+        if existing_record:
+            # If found in DB, just print what's stored
+            db_title, db_author, db_article_text, db_core_thesis, db_detailed_abstract, db_supporting_data_quotes = existing_record
+            print(f"\n--- ARTICLE (FROM DB): {db_title} by {db_author} ---")
+            print("\n=== CORE THESIS ===")
+            print(db_core_thesis)
+            print("\n=== DETAILED ABSTRACT ===")
+            print(db_detailed_abstract)
+            print("\n=== SUPPORTING DATA AND QUOTES ===")
+            print(db_supporting_data_quotes)
+            print("-" * 50)
+        else:
+            # Summarize and insert
+            print(f"\n--- ARTICLE: {article['title']} by {article['author']} ---")
+            core_thesis = generate_core_thesis(client, article)
+            detailed_abstract = generate_detailed_abstract(client, article)
+            supporting_data_quotes = generate_supporting_data_quotes(client, article)
 
-        core_thesis = generate_core_thesis(client, article)
-        detailed_abstract = generate_detailed_abstract(client, article)
-        supporting_data_quotes = generate_supporting_data_quotes(client, article)
+            print("\n=== CORE THESIS ===")
+            print(core_thesis)
+            print("\n=== DETAILED ABSTRACT ===")
+            print(detailed_abstract)
+            print("\n=== SUPPORTING DATA AND QUOTES ===")
+            print(supporting_data_quotes)
+            print("-" * 50)
 
-        print("\n=== CORE THESIS ===")
-        print(core_thesis)
-        print("\n=== DETAILED ABSTRACT ===")
-        print(detailed_abstract)
-        print("\n=== SUPPORTING DATA AND QUOTES ===")
-        print(supporting_data_quotes)
-        print("-" * 50)
+            # Store in DB
+            insert_article(
+                conn,
+                source="Foreign Policy",
+                url=article["url"],
+                title=article["title"],
+                author=article["author"],
+                article_text=article["text"],  # Storing full text
+                core_thesis=core_thesis,
+                detailed_abstract=detailed_abstract,
+                supporting_data_quotes=supporting_data_quotes
+            )
+
+    conn.close()
 
 if __name__ == "__main__":
     main()
