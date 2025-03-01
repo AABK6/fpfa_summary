@@ -92,12 +92,15 @@
 <!-- NAVBAR -->
 <nav class="navbar navbar-expand-lg navbar-light bg-light">
   <div class="container-fluid">
-    <a class="navbar-brand ms-3" href="#">Article Summaries</a>
+    <a class="navbar-brand ms-3" href="#">
+      WorldScan - <small>Synthesizing global analysis</small>
+    </a>
   </div>
 </nav>
 
 <div class="container">
-  <h1 class="my-4">Latest Articles</h1>
+  <!-- Changed header from h1 to h2 for smaller font -->
+  <h3 class="my-4">Latest Articles</h3>
 
   {% for article in articles %}
     <div class="article-card shadow-sm">
