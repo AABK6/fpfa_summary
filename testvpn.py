@@ -20,7 +20,7 @@ def get_vpn_session():
     username_enc = quote(username)
     password_enc = quote(password)
     proxy_str = f"{username_enc}:{password_enc}@{server}:{port}"
-    proxies
+    proxies = {
         "http": f"socks5://{proxy_str}",
         "https": f"socks5://{proxy_str}"
     }
