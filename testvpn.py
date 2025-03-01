@@ -6,7 +6,7 @@ import os
 from google import genai
 from google.genai import types
 import sqlite3
-from urllib.parse import quote  # <-- NEW IMPORT
+from urllib.parse import quote
 
 # --- Add persistent VPN session ---
 def get_vpn_session():
