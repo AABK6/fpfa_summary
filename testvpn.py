@@ -8,7 +8,7 @@ from google.genai import types
 import sqlite3
 from urllib.parse import quote
 
-# --- Add persistent VPN session ---
+# --- Add persistent VPN session --- 
 def get_vpn_session():
     username = "7TCvACC84BTZPPxe4TWCSwks"
     password = "4qgZrr5fgBcH1pCfqFZT4ZVq"
