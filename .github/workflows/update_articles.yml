@@ -1,9 +1,11 @@
 name: Update articles
+permissions:
+  contents: write
 
 on:
   schedule:
     - cron: '0 */4 * * *'  # Run every 4 hours
-  workflow_dispatch:       # Allows manual triggering
+  workflow_dispatch:
 
 jobs:
   run-scripts:
@@ -13,6 +15,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v2
+        with:
+          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v2
