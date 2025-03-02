@@ -28,3 +28,18 @@ jobs:
 
       - name: Run second script with argument
         run: python summarize_fp.py 7
+
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Commit changes
+        run: |
+          git add .
+          git commit -m "Update articles at $(date)" || echo "No changes to commit"
+
+      - name: Push changes
+        run: git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
