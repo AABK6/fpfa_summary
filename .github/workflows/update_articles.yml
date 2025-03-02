@@ -8,7 +8,8 @@ on:
 jobs:
   run-scripts:
     runs-on: ubuntu-latest
-
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v2
