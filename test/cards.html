@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Article Deck</title>
+  <style>
+    /* --- Reset / Basic Setup --- */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      color: #333;
+      padding: 2rem;
+    }
+
+    .deck {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem; /* space between cards */
+      max-width: 600px;
+      margin: 0 auto; /* center the deck */
+    }
+
+    /* --- Card Container --- */
+    .card {
+      position: relative;
+      width: 100%;
+      perspective: 1000px; /* Needed for 3D flip */
+      cursor: pointer; /* Indicate clickable */
+      transition: all 0.3s ease;
+      background-color: transparent;
+    }
+
+    /* We’ll track three states with data-state:
+       "collapsed", "expanded", "flipped" */
+
+    /* --- Inner wrapper for 3D flip --- */
+    .card-inner {
+      position: relative;
+      width: 100%;
+      height: auto; /* Let the front expand/collapse. */
+      transform-style: preserve-3d;
+      transition: transform 0.4s ease; /* Flip speed */
+    }
+
+    /* --- Card Front --- */
+    .card-front,
+    .card-back {
+      position: relative;
+      width: 100%;
+      backface-visibility: hidden;
+      background: #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      border-radius: 4px;
+      overflow: hidden;
+      transform-origin: center right;
+      /* We'll manage height changes of .card-front with max-height for smooth expand. */
+    }
+
+    /* The front is initially "collapsed" to just show title */
+    .card-front {
+      transform: rotateY(0deg);
+      transition: max-height 0.4s ease;
+      max-height: 3rem; /* Collapsed height – just enough for a title bar */
+      padding: 1rem;
+    }
+
+    /* When .card is expanded, let the front show more content (Core Thesis) */
+    .card[data-state="expanded"] .card-front {
+      max-height: 12rem; /* or enough to show your full Core Thesis */
+    }
+
+    /* --- Card Back (flipped side) --- */
+    .card-back {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform: rotateY(180deg);
+      width: 100%;
+      padding: 1rem;
+      box-sizing: border-box;
+      min-height: 6rem; /* give some base height */
+    }
+
+    /* On "flipped," rotate .card-inner 180 so that card-back is shown. */
+    .card[data-state="flipped"] .card-inner {
+      transform: rotateY(180deg);
+    }
+
+    /* Because the front remains in place in 3D space, we can hide it behind the back when flipped. */
+    .card[data-state="flipped"] .card-front {
+      /* Could optionally hide if you don't want the front visible in 3D. */
+    }
+
+    /* --- Card Content & Layout --- */
+    .card-title {
+      font-size: 1.2rem;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+    .core-thesis,
+    .detailed-abstract {
+      font-size: 0.9rem;
+      line-height: 1.4;
+      display: none; /* hidden by default */
+    }
+
+    /* When expanded, show the core-thesis. */
+    .card[data-state="expanded"] .core-thesis {
+      display: block;
+    }
+
+    /* On the back, the detailed abstract is always visible when flipped. */
+    .detailed-abstract {
+      margin-bottom: 1rem;
+    }
+
+    /* --- Quotes Section (hidden by default) --- */
+    .supporting-quotes {
+      display: none;
+      border-top: 1px solid #ddd;
+      padding-top: 0.5rem;
+      margin-top: 0.5rem;
+      font-size: 0.88rem;
+      line-height: 1.4;
+    }
+
+    /* Show quotes when .show-quotes is toggled. */
+    .card-back.show-quotes .supporting-quotes {
+      display: block;
+    }
+
+    .toggle-quotes {
+      display: inline-block;
+      margin-bottom: 0.5rem;
+      background: #eee;
+      border: none;
+      padding: 0.3rem 0.6rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+
+  </style>
+</head>
+<body>
+
+<div class="deck">
+  <!-- CARD 1 -->
+  <div class="card" data-state="collapsed">
+    <div class="card-inner">
+      <!-- FRONT SIDE -->
+      <div class="card-front">
+        <div class="card-title">Article 1: How Far Will Rwanda Go in Congo?</div>
+        <div class="core-thesis">
+          <p>
+            <strong>Core Thesis:</strong> Rwanda’s strategic interests in Congo are complex,
+            aiming to address cross-border militancy and political leverage while balancing
+            regional diplomacy. This involvement raises humanitarian and sovereignty concerns.
+          </p>
+        </div>
+      </div>
+      <!-- BACK SIDE -->
+      <div class="card-back">
+        <div class="detailed-abstract">
+          <p>
+            <strong>Detailed Abstract:</strong> Since the late 1990s, Rwanda has had periodic interventions
+            in eastern Congo. Though often framed as security measures against rebel groups, these
+            interventions also have implications for resource control and regional power dynamics.
+          </p>
+        </div>
+        <button class="toggle-quotes">Show Quotes</button>
+        <div class="supporting-quotes">
+          <p>“Rwanda must balance external pressure with domestic security concerns.” – Foreign Policy Weekly</p>
+          <p>“Congo’s vast resources have been a magnet for regional power plays.” – Analyst Jane Doe</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CARD 2 -->
+  <div class="card" data-state="collapsed">
+    <div class="card-inner">
+      <!-- FRONT SIDE -->
+      <div class="card-front">
+        <div class="card-title">Article 2: Europe’s Moment of Truth</div>
+        <div class="core-thesis">
+          <p>
+            <strong>Core Thesis:</strong> Europe faces critical decisions on defense autonomy,
+            energy policy, and digital sovereignty. The window to act is narrow, requiring bold leadership.
+          </p>
+        </div>
+      </div>
+      <!-- BACK SIDE -->
+      <div class="card-back">
+        <div class="detailed-abstract">
+          <p>
+            <strong>Detailed Abstract:</strong> With heightened tensions on its eastern border
+            and growing competition globally, the EU must redefine its strategic posture.
+            Debates on military spending, cross-border energy systems, and industrial regulation
+            indicate a time of decisive change.
+          </p>
+        </div>
+        <button class="toggle-quotes">Show Quotes</button>
+        <div class="supporting-quotes">
+          <p>“If not now, when? Europe’s unity is at stake.” – Commissioner X</p>
+          <p>“Energy policy underpins every strategic decision.” – Think Tank Report</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CARD 3 -->
+  <div class="card" data-state="collapsed">
+    <div class="card-inner">
+      <!-- FRONT SIDE -->
+      <div class="card-front">
+        <div class="card-title">Article 3: Productivity is Everything</div>
+        <div class="core-thesis">
+          <p>
+            <strong>Core Thesis:</strong> In a post-pandemic economy, productivity growth
+            is key to sustaining living standards and competitiveness. Technological
+            adoption and skilled labor are central to this challenge.
+          </p>
+        </div>
+      </div>
+      <!-- BACK SIDE -->
+      <div class="card-back">
+        <div class="detailed-abstract">
+          <p>
+            <strong>Detailed Abstract:</strong> Economists argue that after a period of stagnant
+            productivity, businesses and governments alike must invest in innovation, training,
+            and infrastructure. The pandemic accelerated digital shifts, but structural reforms
+            are needed for long-term gains.
+          </p>
+        </div>
+        <button class="toggle-quotes">Show Quotes</button>
+        <div class="supporting-quotes">
+          <p>“If we don’t keep improving, others will surpass us.” – Professor ABC</p>
+          <p>“Automation should complement, not replace, human talent.” – Tech CEO</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- .deck -->
+
+<script>
+/**
+ * Card Interaction Logic
+ * - On first click (state = "collapsed"): expand the card to show Core Thesis.
+ * - On second click (state = "expanded"): flip the card to show Detailed Abstract on the back.
+ * - On third click (state = "flipped"): flip back to front in expanded state.
+ * - The "Show Quotes" button toggles quotes on the back.
+ */
+document.querySelectorAll('.card').forEach(card => {
+  card.addEventListener('click', (e) => {
+    // If user clicked the "Show Quotes" button, we don't change the card state here.
+    // We'll handle that in a separate event listener.
+    const target = e.target;
+    if (target.classList.contains('toggle-quotes')) {
+      return; // prevent changing the data-state on the main card
+    }
+
+    const currentState = card.getAttribute('data-state');
+
+    if (currentState === 'collapsed') {
+      // 1st click: show the front (Core Thesis)
+      card.setAttribute('data-state', 'expanded');
+    } else if (currentState === 'expanded') {
+      // 2nd click: flip to the back (Detailed Abstract)
+      card.setAttribute('data-state', 'flipped');
+    } else if (currentState === 'flipped') {
+      // 3rd click: flip back to front in expanded state
+      card.setAttribute('data-state', 'expanded');
+    }
+  });
+
+  // Handle the "Show Quotes" button (on the back)
+  const toggleQuotesBtn = card.querySelector('.toggle-quotes');
+  const cardBack = card.querySelector('.card-back');
+
+  if (toggleQuotesBtn && cardBack) {
+    toggleQuotesBtn.addEventListener('click', (event) => {
+      event.stopPropagation(); // so we don’t flip the card again
+      // Toggle a class that shows/hides the quotes
+      cardBack.classList.toggle('show-quotes');
+      toggleQuotesBtn.textContent =
+        cardBack.classList.contains('show-quotes') ? 'Hide Quotes' : 'Show Quotes';
+    });
+  }
+});
+</script>
+
+</body>
+</html>
