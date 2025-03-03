@@ -58,5 +58,6 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: 'master_ppfflaskapp.yml',
-              ref: 'master' //optional, but helps in case of branches
+              ref: 'master',
+              inputs: {} //Optional inputs to pass to the triggered workflow
             })
