@@ -1,7 +1,7 @@
 name: Update articles
 permissions:
   contents: write
-  action: write
+  actions: write
 
 on:
   schedule:
