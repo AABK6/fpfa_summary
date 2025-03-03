@@ -27,43 +27,62 @@ document.addEventListener('DOMContentLoaded', () => {
         return { front: frontHeight, back: backHeight, backWithQuotes: backWithQuotesHeight };
     }
 
-    // Initialize each card with precomputed heights and stacked state
+    // Initialize each card with precomputed heights
     cards.forEach(card => {
         const heights = measureHeights(card);
         card.dataset.frontHeight = heights.front;
         card.dataset.backHeight = heights.back;
         card.dataset.backWithQuotesHeight = heights.backWithQuotes;
-        card.classList.add('stacked');
     });
 
-    // Click event to cycle through states
+    // Function to set card state
+    function setCardState(card, state) {
+        card.dataset.state = state;
+        if (state == 0) {
+            card.classList.add('stacked');
+            card.classList.remove('expanded', 'flipped');
+            card.querySelector('.card-back').classList.remove('show-quotes');
+            card.style.height = '60px';
+        } else if (state == 1) {
+            card.classList.remove('stacked', 'flipped');
+            card.classList.add('expanded');
+            card.querySelector('.card-back').classList.remove('show-quotes');
+            card.style.height = `${card.dataset.frontHeight}px`;
+        } else if (state == 2) {
+            card.classList.remove('stacked');
+            card.classList.add('expanded', 'flipped');
+            card.querySelector('.card-back').classList.remove('show-quotes');
+            card.style.height = `${card.dataset.backHeight}px`;
+        } else if (state == 3) {
+            card.classList.remove('stacked');
+            card.classList.add('expanded', 'flipped');
+            card.querySelector('.card-back').classList.add('show-quotes');
+            card.style.height = `${card.dataset.backWithQuotesHeight}px`;
+        }
+    }
+
+    // Initially, set the last card (front card) to state 1, others to state 0
+    cards.forEach((card, index) => {
+        if (index === totalCards - 1) {
+            setCardState(card, 1); // Front card (Card 1) starts expanded, showing front
+        } else {
+            setCardState(card, 0); // Other cards start stacked
+        }
+    });
+
+    // Click event
     cards.forEach(card => {
-        let state = 0; // 0: stacked, 1: expanded front, 2: flipped back, 3: flipped back with quotes
         card.addEventListener('click', () => {
-            state = (state + 1) % 4;
-            if (state === 0) {
-                // Stacked
-                card.classList.add('stacked');
-                card.classList.remove('expanded', 'flipped');
-                card.querySelector('.card-back').classList.remove('show-quotes');
-                card.style.height = '60px';
-            } else if (state === 1) {
-                // Expanded (front)
-                card.classList.remove('stacked');
-                card.classList.add('expanded');
-                card.classList.remove('flipped');
-                card.style.height = `${card.dataset.frontHeight}px`;
-            } else if (state === 2) {
-                // Flipped (back without quotes)
-                card.classList.remove('stacked');
-                card.classList.add('expanded', 'flipped');
-                card.querySelector('.card-back').classList.remove('show-quotes');
-                card.style.height = `${card.dataset.backHeight}px`;
-            } else if (state === 3) {
-                // Flipped (back with quotes)
-                card.classList.add('expanded', 'flipped');
-                card.querySelector('.card-back').classList.add('show-quotes');
-                card.style.height = `${card.dataset.backWithQuotesHeight}px`;
+            const currentState = parseInt(card.dataset.state);
+            if (currentState === 0) {
+                // Stack all cards
+                cards.forEach(c => setCardState(c, 0));
+                // Expand the clicked card to state 1
+                setCardState(card, 1);
+            } else {
+                // Cycle to next state: 1 -> 2 -> 3 -> 1
+                const nextState = (currentState % 3) + 1;
+                setCardState(card, nextState);
             }
         });
     });
