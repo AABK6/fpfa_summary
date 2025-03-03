@@ -3,7 +3,7 @@ body {
     background: #f0f2f5;
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
     min-height: 100vh;
     margin: 0;
     padding: 20px;
@@ -16,7 +16,7 @@ body {
     align-items: center;
     width: 100%;
     max-width: 600px; /* Wider cards */
-    perspective: 1000px; /* Enables 3D perspective */
+    perspective: 1500px; /* Enables 3D perspective */
 }
 
 .card {
