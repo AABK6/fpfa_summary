@@ -130,3 +130,7 @@ body {
 .fa-title {
     background-color: #cceeff; /* Light pastel blue */
 }
+
+.card-back .card-content p {
+    white-space: pre-wrap;
+}

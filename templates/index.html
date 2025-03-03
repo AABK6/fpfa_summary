@@ -30,7 +30,13 @@
             <div class="card-content">
               <p>{{ article.detailed_abstract }}</p>
               <div class="quotes-section">
-                <p>{{ article.supporting_data_quotes }}</p>
+                <ul>
+                  {% for quote in article.supporting_data_quotes.split('*') %}
+                      {% if quote.strip() %}
+                          <li>{{ quote.strip() }}</li>
+                      {% endif %}
+                  {% endfor %}
+                </ul>
               </div>
             </div>
           </div>
