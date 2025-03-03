@@ -45,7 +45,7 @@ def home():
     Main route: Fetch and display the latest articles in a card-based layout.
     Articles are sorted latest-first by date_added DESC.
     """
-    articles = get_latest_articles(limit=12)
+    articles = get_latest_articles(limit=20)
     return render_template('index.html', articles=articles)
 
 if __name__ == "__main__":

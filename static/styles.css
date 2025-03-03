@@ -11,37 +11,45 @@ body {
 }
 
 .deck {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 100%;
-    max-width: 600px; /* Wider cards */
+    width: 95%;
+    max-width: 600px;
     perspective: 1500px; /* Enables 3D perspective */
+    height: 100vh; /* Fixed height for scrolling */
+    overflow-y: auto; /* Enable vertical scrolling */
+    position: relative;
+    transform-style: preserve-3d; /* Preserve 3D for child elements */
+}
+
+.card-3d {
+    position: absolute;
+    width: 95%;
+    transition: transform 0.3s ease;
+    transform-origin: center;
+    transform-style: preserve-3d; /* Preserve 3D for child elements */
 }
 
 .card {
     width: 100%;
-    overflow: hidden;
+    overflow: visible; /* Prevent clipping of rotated content */
     transition: transform 0.3s ease, height 0.3s ease, margin-bottom 0.3s ease, box-shadow 0.3s ease;
     margin-bottom: 20px;
     background: #fff;
     border-radius: 16px;
     cursor: pointer;
-    position: relative; /* Context for inner elements */
+    position: relative;
+    transform-style: preserve-3d;
+    transform-origin: center center;
 }
 
+/* Stacked state adjustments - height set dynamically in JS */
 .card.stacked {
-    height: 40px; /* Only title visible when stacked */
-    margin-bottom: calc(-8px * (2 + 0.55 * var(--depth))); /* Overlap cards */
-    transform: translateZ(calc(-10px * var(--depth))) scale(calc(1 - 0.04 * var(--depth)));
-    z-index: calc(100 - var(--depth));
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow for stacked state */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+/* Expanded or flipped cards (unchanged) */
 .card.expanded, .card.flipped {
-    transform: translateZ(0) scale(1); /* Bring to front, full size */
-    z-index: 101; /* Above all stacked cards */
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15); /* Stronger shadow when expanded */
+    z-index: 101; /* Bring to front */
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
 }
 
 .card.stacked:hover {
@@ -133,4 +141,8 @@ body {
 
 .card-back .card-content p {
     white-space: pre-wrap;
+}
+
+.deck-spacer {
+    height: 0; /* Height set dynamically by JS */
 }

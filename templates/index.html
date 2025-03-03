@@ -9,6 +9,7 @@
 <body>
   <div class="deck">
     {% for article in articles %}
+    <div class="card-3d">
       <div class="card" data-state="0">
         <div class="card-inner">
           <!-- Front of the card -->
@@ -42,7 +43,9 @@
           </div>
         </div>
       </div>
+    </div>
     {% endfor %}
+    <div class="deck-spacer"></div> <!-- Moved outside the loop -->
   </div>
   <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
