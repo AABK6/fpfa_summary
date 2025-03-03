@@ -15,38 +15,31 @@ body {
     flex-direction: column;
     align-items: center;
     width: 100%;
-    max-width: 600px; /* Wider cards */
-    perspective: 1000px; /* Enables 3D perspective */
+    max-width: 600px;
 }
 
 .card {
     width: 100%;
     overflow: hidden;
-    transition: transform 0.3s ease, height 0.3s ease, margin-bottom 0.3s ease, box-shadow 0.3s ease;
+    transition: height 0.3s ease, margin-bottom 0.3s ease, box-shadow 0.3s ease;
     margin-bottom: 20px;
     background: #fff;
-    border-radius: 16px;
+    border-radius: 8px;
     cursor: pointer;
-    position: relative; /* Context for inner elements */
 }
 
 .card.stacked {
-    height: 70px; /* Only title visible when stacked */
+    height: 60px; /* Only title visible */
     margin-bottom: -20px; /* Overlap cards */
-    transform: translateZ(calc(-10px * var(--depth))) scale(calc(1 - 0.05 * var(--depth)));
-    z-index: calc(100 - var(--depth));
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow for stacked state */
+    order: 0;
+    z-index: 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.card.expanded, .card.flipped {
-    transform: translateZ(0) scale(1); /* Bring to front, full size */
-    z-index: 101; /* Above all stacked cards */
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15); /* Stronger shadow when expanded */
-}
-
-.card.stacked:hover {
-    transform: translateZ(calc(-10px * var(--depth))) scale(calc(1 - 0.05 * var(--depth))) translateY(-5px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12); /* Slightly stronger shadow on hover */
+.card.expanded {
+    order: 100; /* Moves to bottom in flex column */
+    z-index: 101;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
 }
 
 .card-inner {
@@ -54,7 +47,7 @@ body {
     width: 100%;
     height: 100%;
     transition: transform 0.6s;
-    transform-style: preserve-3d; /* Preserve 3D for flipping */
+    transform-style: preserve-3d;
 }
 
 .card.flipped .card-inner {
@@ -69,7 +62,7 @@ body {
     padding: 20px;
     box-sizing: border-box;
     border: 1px solid #ddd;
-    border-radius: 16px;
+    border-radius: 8px;
 }
 
 .card-front {
@@ -104,7 +97,7 @@ body {
     margin-top: 15px;
     padding: 10px;
     background: #f8f9fa;
-    border-radius: 8px;
+    border-radius: 5px;
 }
 
 .card-back.show-quotes .quotes-section {
