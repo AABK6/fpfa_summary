@@ -75,7 +75,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Click event
+    // **New Code: Function to reset to original state**
+    function resetToOriginalState() {
+        cards.forEach(card => setCardState(card, 0)); // Stack all cards
+        const frontCard = cards[totalCards - 1];      // Front card is the last in DOM
+        setCardState(frontCard, 1);                   // Expand front card
+    }
+
+    // **New Code: Detect clicks outside the deck**
+    document.addEventListener('click', (event) => {
+        if (!deck.contains(event.target)) {
+            resetToOriginalState();
+        }
+    });
+
+    // Click event for cards (unchanged)
     cards.forEach(card => {
         card.addEventListener('click', () => {
             const currentState = parseInt(card.dataset.state);

@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Latest Summaries</title>
-  <!-- Link to custom CSS in static folder -->
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
@@ -14,7 +13,7 @@
         <div class="card-inner">
           <!-- Front of the card -->
           <div class="card-front">
-            <div class="card-title-container">
+            <div class="card-title-container {{ 'fp-title' if article.source == 'Foreign Policy' else 'fa-title' }}">
               <h2 class="card-title">{{ article.title }}</h2>
               <p class="article-source">{{ article.source }} — {{ article.author }}</p>
             </div>
@@ -24,7 +23,7 @@
           </div>
           <!-- Back of the card -->
           <div class="card-back">
-            <div class="card-title-container">
+            <div class="card-title-container {{ 'fp-title' if article.source == 'Foreign Policy' else 'fa-title' }}">
               <h2 class="card-title">{{ article.title }}</h2>
               <p class="article-source">{{ article.source }} — {{ article.author }}</p>
             </div>
@@ -39,7 +38,6 @@
       </div>
     {% endfor %}
   </div>
-  <!-- Link to custom JavaScript in static folder -->
   <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
