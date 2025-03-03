@@ -1,0 +1,117 @@
+body {
+    font-family: 'Arial', sans-serif;
+    background: #f0f2f5;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.deck {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 600px;
+}
+
+.card {
+    width: 100%;
+    overflow: hidden;
+    transition: height 0.3s ease, margin-bottom 0.3s ease, box-shadow 0.3s ease;
+    margin-bottom: 20px;
+    background: #fff;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.card.stacked {
+    height: 60px; /* Only title visible */
+    margin-bottom: -20px; /* Overlap cards */
+    order: 0;
+    z-index: 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.card.expanded {
+    order: 100; /* Moves to bottom in flex column */
+    z-index: 101;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+}
+
+.card-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transition: transform 0.6s;
+    transform-style: preserve-3d;
+}
+
+.card.flipped .card-inner {
+    transform: rotateY(180deg);
+}
+
+.card-front, .card-back {
+    position: absolute;
+    width: 100%;
+    backface-visibility: hidden;
+    background: #fff;
+    padding: 20px;
+    box-sizing: border-box;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.card-front {
+    transform: rotateY(0deg);
+}
+
+.card-back {
+    transform: rotateY(180deg);
+}
+
+.card-title-container {
+    padding: 10px;
+    background: #e9ecef;
+    border-bottom: 1px solid #ddd;
+}
+
+.card-title {
+    margin: 0;
+    font-size: 1.2em;
+    color: #333;
+}
+
+.card-content {
+    padding: 15px;
+    font-size: 1em;
+    line-height: 1.5;
+    color: #555;
+}
+
+.quotes-section {
+    display: none;
+    margin-top: 15px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 5px;
+}
+
+.card-back.show-quotes .quotes-section {
+    display: block;
+}
+
+.quotes-section ul {
+    margin: 0;
+    padding-left: 20px;
+    list-style-type: disc;
+}
+
+.quotes-section li {
+    margin: 5px 0;
+    font-style: italic;
+    color: #666;
+}
