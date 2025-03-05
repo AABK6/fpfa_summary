@@ -66,38 +66,50 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Initially, set the last card (front card) to state 1, others to state 0
+    // Initialize the deck with the last card expanded
+    let currentExpandedIndex = totalCards - 1; // Latest card
     cards.forEach((card, index) => {
-        if (index === totalCards - 1) {
-            setCardState(card, 1); // Front card (Card 1) starts expanded, showing front
+        if (index === currentExpandedIndex) {
+            setCardState(card, 1); // Latest card starts expanded, showing front
         } else {
             setCardState(card, 0); // Other cards start stacked
         }
     });
 
-    // **New Code: Function to reset to original state**
-    function resetToOriginalState() {
-        cards.forEach(card => setCardState(card, 0)); // Stack all cards
-        const frontCard = cards[totalCards - 1];      // Front card is the last in DOM
-        setCardState(frontCard, 1);                   // Expand front card
+    // Function to update the expanded card based on currentExpandedIndex
+    function updateExpandedCard() {
+        cards.forEach((card, index) => {
+            if (index === currentExpandedIndex) {
+                setCardState(card, 1); // Expand to front view
+            } else {
+                setCardState(card, 0); // Stack others
+            }
+        });
     }
 
-    // **New Code: Detect clicks outside the deck**
+    // Function to reset to original state
+    function resetToOriginalState() {
+        cards.forEach(card => setCardState(card, 0)); // Stack all cards
+        currentExpandedIndex = totalCards - 1;        // Reset to latest card
+        setCardState(cards[currentExpandedIndex], 1); // Expand latest card
+    }
+
+    // Detect clicks outside the deck to reset
     document.addEventListener('click', (event) => {
         if (!deck.contains(event.target)) {
             resetToOriginalState();
         }
     });
 
-    // Click event for cards (unchanged)
+    // Click event for cards
     cards.forEach(card => {
         card.addEventListener('click', () => {
             const currentState = parseInt(card.dataset.state);
             if (currentState === 0) {
-                // Stack all cards
+                // Stack all cards and expand the clicked one
                 cards.forEach(c => setCardState(c, 0));
-                // Expand the clicked card to state 1
                 setCardState(card, 1);
+                currentExpandedIndex = Array.from(cards).indexOf(card);
             } else {
                 // Cycle to next state: 1 -> 2 -> 3 -> 1
                 const nextState = (currentState % 3) + 1;
@@ -105,4 +117,28 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    // Wheel event for scrolling through cards
+    let accumulatedDelta = 0;
+    const threshold = 100; // Scroll sensitivity (adjust as needed)
+    deck.addEventListener('wheel', (event) => {
+        event.preventDefault(); // Prevent default page scrolling
+        accumulatedDelta += event.deltaY;
+
+        if (accumulatedDelta > threshold) {
+            // Scroll down: latest card falls, previous card expands
+            if (currentExpandedIndex > 0) {
+                currentExpandedIndex--;
+                updateExpandedCard();
+            }
+            accumulatedDelta = 0; // Reset delta
+        } else if (accumulatedDelta < -threshold) {
+            // Scroll up: next card expands, moving toward latest
+            if (currentExpandedIndex < totalCards - 1) {
+                currentExpandedIndex++;
+                updateExpandedCard();
+            }
+            accumulatedDelta = 0; // Reset delta
+        }
+    }, { passive: false }); // Allow preventing default
 });
