@@ -105,4 +105,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    const deckMiddle = deck.offsetTop + (deck.offsetHeight / 2);
+    const targetScroll = deckMiddle - window.innerHeight * 0.5;
+    window.scrollTo({ top: targetScroll, behavior: 'smooth' });
 });
