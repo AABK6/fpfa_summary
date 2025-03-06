@@ -135,3 +135,18 @@ body {
 .card-back .card-content p {
     white-space: pre-wrap;
 }
+
+.article-link {
+    text-align: right;
+    margin-top: 15px;
+}
+
+.article-link a {
+    color: #666;
+    text-decoration: none;
+    font-size: 0.9em;
+}
+
+.article-link a:hover {
+    text-decoration: underline;
+}
