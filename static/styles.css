@@ -136,9 +136,40 @@ body {
     white-space: pre-wrap;
 }
 
+.article-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 15px;
+    padding: 10px 0;
+    border-top: 1px solid #eee;
+}
+
+.share-button {
+    background: none;
+    border: none;
+    padding: 8px;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.share-button:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.share-button svg {
+    width: 20px;
+    height: 20px;
+    color: #666;
+}
+
 .article-link {
     text-align: right;
-    margin-top: 15px;
+    margin: 0;
 }
 
 .article-link a {

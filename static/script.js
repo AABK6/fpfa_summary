@@ -66,30 +66,43 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Initially, set the last card (front card) to state 1, others to state 0
+    // Check URL parameters for article_id and state
+    const urlParams = new URLSearchParams(window.location.search);
+    const highlightId = urlParams.get('article_id');
+    const highlightState = urlParams.get('state');
+
+    // Initially set cards based on URL parameters or default state
     cards.forEach((card, index) => {
-        if (index === totalCards - 1) {
-            setCardState(card, 1); // Front card (Card 1) starts expanded, showing front
-        } else {
-            setCardState(card, 0); // Other cards start stacked
+        if (highlightId && card.dataset.articleId === highlightId && highlightState) {
+            // If URL has article_id and state, set that card to the specified state
+            setCardState(card, parseInt(highlightState));
+        } else if (highlightId) {
+            // If we have a highlighted card, other cards should still be visible but stacked
+            setCardState(card, 0);
+        } else if (index === totalCards - 1 && !highlightId) {
+            // If no URL parameters, front card (last in DOM) starts expanded
+            setCardState(card, 1);
+        } else if (!highlightId) {
+            // Other cards start stacked if no URL parameters
+            setCardState(card, 0);
         }
     });
 
-    // **New Code: Function to reset to original state**
+    // Function to reset to original state
     function resetToOriginalState() {
         cards.forEach(card => setCardState(card, 0)); // Stack all cards
         const frontCard = cards[totalCards - 1];      // Front card is the last in DOM
         setCardState(frontCard, 1);                   // Expand front card
     }
 
-    // **New Code: Detect clicks outside the deck**
+    // Detect clicks outside the deck
     document.addEventListener('click', (event) => {
         if (!deck.contains(event.target)) {
             resetToOriginalState();
         }
     });
 
-    // Click event for cards (unchanged)
+    // Click event for cards
     cards.forEach(card => {
         card.addEventListener('click', () => {
             const currentState = parseInt(card.dataset.state);
@@ -105,6 +118,46 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    // Share article function
+    window.shareArticle = function(articleId) {
+        // Prevent event propagation to stop card from expanding
+        event.stopPropagation();
+        
+        const card = document.querySelector(`[data-article-id="${articleId}"]`);
+        const state = card.dataset.state;
+        
+        const params = new URLSearchParams();
+        params.set('article_id', articleId);
+        params.set('state', state);
+        const url = `${window.location.origin}${window.location.pathname}?${params}`;
+        
+        // Create a temporary input to copy the URL
+        const tempInput = document.createElement('input');
+        tempInput.value = url;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempInput);
+        
+        // Show a temporary notification
+        const notification = document.createElement('div');
+        notification.textContent = 'Link copied to clipboard!';
+        notification.style.position = 'fixed';
+        notification.style.bottom = '20px';
+        notification.style.left = '50%';
+        notification.style.transform = 'translateX(-50%)';
+        notification.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        notification.style.color = 'white';
+        notification.style.padding = '10px 20px';
+        notification.style.borderRadius = '5px';
+        notification.style.zIndex = '1000';
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            document.body.removeChild(notification);
+        }, 2000);
+    };
 
     const deckMiddle = deck.offsetTop + (deck.offsetHeight / 2);
     const targetScroll = deckMiddle - window.innerHeight * 0.5;

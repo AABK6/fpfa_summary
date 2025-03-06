@@ -1,4 +1,4 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 import sqlite3
 
 app = Flask(__name__)
@@ -45,8 +45,10 @@ def home():
     Main route: Fetch and display the latest articles in a card-based layout.
     Articles are sorted latest-first by date_added DESC.
     """
+    highlight_id = request.args.get('article_id', type=int)
+    state = request.args.get('state', type=int)
     articles = get_latest_articles(limit=20)
-    return render_template('index.html', articles=articles)
+    return render_template('index.html', articles=articles, highlight_id=highlight_id, state=state)
 
 if __name__ == "__main__":
     app.run(debug=True)
