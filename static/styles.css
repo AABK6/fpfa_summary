@@ -148,10 +148,10 @@ body {
 .share-button {
     background: none;
     border: none;
-    padding: 8px;
+    padding: 6px;
     cursor: pointer;
     border-radius: 50%;
-    transition: background-color 0.2s;
+    transition: all 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -159,11 +159,13 @@ body {
 
 .share-button:hover {
     background-color: rgba(0, 0, 0, 0.05);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
 .share-button svg {
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
     color: #666;
 }
 
