@@ -81,26 +81,31 @@ body {
 .card-back {
     transform: rotateY(180deg);
 }
-
+.article-date {
+    position: absolute;
+    bottom: 5px;
+    right: 10px;
+    font-size: 0.75em;
+    color: #333;
+    font-weight: normal;
+}
 .card-title-container {
     padding: 10px;
     background: #e9ecef;
     border-bottom: 1px solid #ddd;
+    position: relative;
 }
-
 .card-title {
     margin: 0;
     font-size: 1.2em;
     color: #333;
 }
-
 .card-content {
     padding: 15px;
     font-size: 1em;
     line-height: 1.5;
     color: #555;
 }
-
 .quotes-section {
     display: none;
     margin-top: 15px;
@@ -108,31 +113,25 @@ body {
     background: #f8f9fa;
     border-radius: 8px;
 }
-
 .card-back.show-quotes .quotes-section {
     display: block;
 }
-
 .quotes-section ul {
     margin: 0;
     padding-left: 20px;
     list-style-type: disc;
 }
-
 .quotes-section li {
     margin: 5px 0;
     font-style: italic;
     color: #666;
 }
-
 .fp-title {
     background-color: #ffcccc; /* Light pastel red */
 }
-
 .fa-title {
     background-color: #cceeff; /* Light pastel blue */
 }
-
 .card-back .card-content p {
     white-space: pre-wrap;
 }
