@@ -63,9 +63,6 @@
             </div>
             <div class="card-content">
               <p>{{ article.detailed_abstract }}</p>
-              <div class="article-link">
-                <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer">read full article on {{ 'foreignpolicy.com' if article.source == 'Foreign Policy' else 'foreignaffairs.com' }}</a>
-              </div>
               <div class="quotes-section">
                 <ul>
                   {% for quote in article.supporting_data_quotes.split('*') %}
@@ -74,6 +71,9 @@
                       {% endif %}
                   {% endfor %}
                 </ul>
+              </div>
+              <div class="article-link">
+                <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer">read on {{ 'foreignpolicy.com' if article.source == 'Foreign Policy' else 'foreignaffairs.com' }}</a>
               </div>
             </div>
           </div>

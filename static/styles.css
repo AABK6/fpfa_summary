@@ -86,7 +86,7 @@ body {
     bottom: 5px;
     right: 10px;
     font-size: 0.75em;
-    color: #333;
+    color: #bbb;
     font-weight: normal;
 }
 .card-title-container {
@@ -142,7 +142,7 @@ body {
 }
 
 .article-link a {
-    color: #666;
+    color: #bbb;
     text-decoration: none;
     font-size: 0.9em;
 }
