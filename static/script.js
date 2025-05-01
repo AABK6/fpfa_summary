@@ -82,9 +82,24 @@ document.addEventListener('DOMContentLoaded', () => {
         setCardState(frontCard, 1);                   // Expand front card
     }
 
-    // **New Code: Detect clicks outside the deck**
+    // Function to check if click/touch is outside the deck
+    function isOutsideDeck(target) {
+        // Check if the click is on a card or its children
+        const isOnCard = target.closest('.card') !== null;
+        // Consider the click "outside" if it's not on a card, regardless of whether it's in the deck container
+        return !isOnCard;
+    }
+
+    // **Updated Code: Detect clicks outside the deck (desktop)**
     document.addEventListener('click', (event) => {
-        if (!deck.contains(event.target)) {
+        if (isOutsideDeck(event.target)) {
+            resetToOriginalState();
+        }
+    });
+
+    // **New Code: Detect touches outside the deck (mobile)**
+    document.addEventListener('touchstart', (event) => {
+        if (isOutsideDeck(event.target)) {
             resetToOriginalState();
         }
     });
@@ -105,4 +120,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    const deckMiddle = deck.offsetTop + (deck.offsetHeight / 2);
+    const targetScroll = deckMiddle - window.innerHeight * 0.5;
+    window.scrollTo({ top: targetScroll, behavior: 'smooth' });
 });
