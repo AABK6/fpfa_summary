@@ -1,3 +1,68 @@
+def test_with_selenium():
+    try:
+        import undetected_chromedriver as uc
+        import pickle
+        import os
+        import time
+        options = uc.ChromeOptions()
+        # options.add_argument("--headless")  # Disable headless for manual CAPTCHA
+        options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+        # Open browser in a small window and off-screen if possible
+        options.add_argument("--window-size=400,300")
+        options.add_argument("--window-position=2000,0")  # Move window off main screen if supported
+        driver = uc.Chrome(options=options, driver_executable_path="/home/aabecassis/chromedriver")
+        url = "https://www.foreignaffairs.com/most-recent"
+        cookies_file = "cookies.pkl"
+        # If cookies file exists, load cookies before visiting the page
+        if os.path.exists(cookies_file):
+            driver.get("https://www.foreignaffairs.com/")
+            with open(cookies_file, "rb") as f:
+                cookies = pickle.load(f)
+            for cookie in cookies:
+                # Selenium expects expiry as int, not float
+                if isinstance(cookie.get('expiry', None), float):
+                    cookie['expiry'] = int(cookie['expiry'])
+                try:
+                    driver.add_cookie(cookie)
+                except Exception as e:
+                    print(f"Cookie import error: {e}")
+            driver.get(url)
+            time.sleep(3)
+            html = driver.page_source
+            print("Selenium page source (first 200 chars):")
+            print(html[:200])
+            # Auto-delete cookies and retry if Cloudflare block detected
+            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
+                print("Cloudflare block detected. Deleting cookies and retrying...")
+                driver.quit()
+                os.remove(cookies_file)
+                # Recursively retry
+                test_with_selenium()
+                return
+        else:
+            print("No cookies found. Loading page and waiting 10 seconds for login/session cookies to be set...")
+            driver.get(url)
+            time.sleep(10)  # Wait for login/session cookies to be set
+            # Save cookies after waiting
+            cookies = driver.get_cookies()
+            with open(cookies_file, "wb") as f:
+                pickle.dump(cookies, f)
+            print(f"Saved {len(cookies)} cookies to {cookies_file}. Re-run to use them automatically.")
+            html = driver.page_source
+            print("Selenium page source (first 200 chars):")
+            print(html[:200])
+            # Auto-delete cookies and retry if Cloudflare block detected
+            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
+                print("Cloudflare block detected. Deleting cookies and retrying...")
+                driver.quit()
+                os.remove(cookies_file)
+                # Recursively retry
+                test_with_selenium()
+                return
+        driver.quit()
+    except Exception as e:
+        print(f"Selenium Exception: {e}")
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -74,35 +139,70 @@ Description:
     - Summarizes each article using Gemini API, now with the EXACTLY CORRECT SDK imports.
 """
 
+
 def extract_latest_article_urls(num_links_to_retrieve=3):
     """
-    Extracts a specified number of latest article URLs (excluding podcasts).
-    (URL extraction function - same as before)
+    Extracts a specified number of latest article URLs (excluding podcasts) using Selenium for robust scraping.
     """
-    url = "https://www.foreignaffairs.com/most-recent"
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Connection': 'keep-alive'
-        }
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-
-        soup = BeautifulSoup(response.content, 'html.parser')
-
+        import undetected_chromedriver as uc
+        import pickle
+        import os
+        import time
+        from bs4 import BeautifulSoup
+        options = uc.ChromeOptions()
+        # options.add_argument("--headless")  # Disable headless for manual CAPTCHA
+        options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--window-size=400,300")
+        options.add_argument("--window-position=2000,0")
+        driver = uc.Chrome(options=options, driver_executable_path="/home/aabecassis/chromedriver")
+        url = "https://www.foreignaffairs.com/most-recent"
+        cookies_file = "cookies.pkl"
+        # If cookies file exists, load cookies before visiting the page
+        if os.path.exists(cookies_file):
+            driver.get("https://www.foreignaffairs.com/")
+            with open(cookies_file, "rb") as f:
+                cookies = pickle.load(f)
+            for cookie in cookies:
+                if isinstance(cookie.get('expiry', None), float):
+                    cookie['expiry'] = int(cookie['expiry'])
+                try:
+                    driver.add_cookie(cookie)
+                except Exception as e:
+                    print(f"Cookie import error: {e}")
+            driver.get(url)
+            time.sleep(2)
+            html = driver.page_source
+            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
+                print("Cloudflare block detected. Deleting cookies and retrying...")
+                driver.quit()
+                os.remove(cookies_file)
+                # Recursively retry
+                return extract_latest_article_urls(num_links_to_retrieve)
+        else:
+            print("No cookies found. Loading page and waiting 10 seconds for login/session cookies to be set...")
+            driver.get(url)
+            time.sleep(3)
+            cookies = driver.get_cookies()
+            with open(cookies_file, "wb") as f:
+                pickle.dump(cookies, f)
+            html = driver.page_source
+            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
+                print("Cloudflare block detected. Deleting cookies and retrying...")
+                driver.quit()
+                os.remove(cookies_file)
+                return extract_latest_article_urls(num_links_to_retrieve)
+        driver.quit()
+        soup = BeautifulSoup(html, 'html.parser')
         article_cards = soup.find_all('div', class_='card--large')
         if not article_cards:
             return None
-
         article_urls = []
         links_retrieved_count = 0
-
         for card in article_cards:
             if links_retrieved_count >= num_links_to_retrieve:
                 break
-
-            # Find URLs in <h3> (main title)
             h3_link = card.find('h3', class_='body-m').find('a') if card.find('h3', class_='body-m') else None
             if h3_link and h3_link.has_attr('href'):
                 extracted_url = "https://www.foreignaffairs.com" + h3_link['href']
@@ -110,55 +210,83 @@ def extract_latest_article_urls(num_links_to_retrieve=3):
                     article_urls.append(extracted_url)
                     links_retrieved_count += 1
                     continue
-
             if links_retrieved_count >= num_links_to_retrieve:
                 break
-
-            # Find URLs in <h4> (subtitle)
             h4_link = card.find('h4', class_='body-s').find('a') if card.find('h4', class_='body-s') else None
             if h4_link and h4_link.has_attr('href'):
                 extracted_url = "https://www.foreignaffairs.com" + h4_link['href']
                 if "podcasts" not in extracted_url.lower():
                     article_urls.append(extracted_url)
                     links_retrieved_count += 1
-
         return article_urls
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching URL: {e}")
-        return None
     except Exception as e:
-        print(f"Error parsing article URLs: {e}")
+        print(f"Selenium Exception (URL extraction): {e}")
         return None
+
 
 def extract_foreign_affairs_article(url):
     """
-    Extracts the title, author, and text content of a Foreign Affairs article.
-    (Article scraping function - same as before)
+    Extracts the title, author, and text content of a Foreign Affairs article using Selenium (bypassing 403s).
     """
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Connection': 'keep-alive'
-        }
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-
-        soup = BeautifulSoup(response.content, 'html.parser')
-
+        import undetected_chromedriver as uc
+        import pickle
+        import os
+        import time
+        from bs4 import BeautifulSoup
+        options = uc.ChromeOptions()
+        # options.add_argument("--headless")  # Disable headless for manual CAPTCHA
+        options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--window-size=400,300")
+        options.add_argument("--window-position=2000,0")
+        driver = uc.Chrome(options=options, driver_executable_path="/home/aabecassis/chromedriver")
+        cookies_file = "cookies.pkl"
+        # If cookies file exists, load cookies before visiting the page
+        if os.path.exists(cookies_file):
+            driver.get("https://www.foreignaffairs.com/")
+            with open(cookies_file, "rb") as f:
+                cookies = pickle.load(f)
+            for cookie in cookies:
+                if isinstance(cookie.get('expiry', None), float):
+                    cookie['expiry'] = int(cookie['expiry'])
+                try:
+                    driver.add_cookie(cookie)
+                except Exception as e:
+                    print(f"Cookie import error: {e}")
+            driver.get(url)
+            time.sleep(3)
+            html = driver.page_source
+            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
+                print("Cloudflare block detected. Deleting cookies and retrying...")
+                driver.quit()
+                os.remove(cookies_file)
+                # Recursively retry
+                return extract_foreign_affairs_article(url)
+        else:
+            print("No cookies found. Loading page and waiting 10 seconds for login/session cookies to be set...")
+            driver.get(url)
+            time.sleep(10)
+            cookies = driver.get_cookies()
+            with open(cookies_file, "wb") as f:
+                pickle.dump(cookies, f)
+            html = driver.page_source
+            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
+                print("Cloudflare block detected. Deleting cookies and retrying...")
+                driver.quit()
+                os.remove(cookies_file)
+                return extract_foreign_affairs_article(url)
+        driver.quit()
+        soup = BeautifulSoup(html, 'html.parser')
         # Extract Title
         title_element = soup.find('h1', class_='topper__title')
         title = title_element.text.strip() if title_element else "Title Not Found"
-
         # Extract Subtitle (optional, if you want to include it)
         subtitle_element = soup.find('h2', class_='topper__subtitle')
         subtitle = subtitle_element.text.strip() if subtitle_element else ""
-
         # Extract Author
         author_element = soup.find('h3', class_='topper__byline')
         author = author_element.text.strip() if author_element else "Author Not Found"
-
         # Extract Article Text
         article_content = soup.find('article')
         if not article_content:
@@ -167,31 +295,24 @@ def extract_foreign_affairs_article(url):
             article_content = soup.find('div', class_='Article__body')
         if not article_content:
             article_content = soup.find('main')
-
         if not article_content:
             article_text = "Article Text Not Found"
         else:
             paragraphs = article_content.find_all('p')
             if not paragraphs:
                 paragraphs = article_content.find_all('div', class_='paragraph')
-
             article_text_list = []
             for p in paragraphs:
                 article_text_list.append(p.text.strip())
             article_text = "\n\n".join(article_text_list)
-
         return {
             "title": title,
             "subtitle": subtitle,
             "author": author,
             "text": article_text
         }
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching URL: {e}")
-        return None
     except Exception as e:
-        print(f"Error parsing article: {e}")
+        print(f"Selenium Exception (article scraping): {e}")
         return None
 
 def create_client(api_key: str) -> genai.Client:
@@ -332,6 +453,8 @@ def main():
             print(db_detailed_abstract)
             print("\n=== SUPPORTING DATA AND QUOTES ===")
             print(db_supporting_data_quotes)
+            print("\n=== FULL TEXT ===")
+            print(db_article_text)
             print("-" * 50)
         else:
             # Otherwise, generate new summaries and store them
@@ -347,6 +470,8 @@ def main():
             print(detailed_abstract)
             print("\n=== SUPPORTING DATA AND QUOTES ===")
             print(supporting_data_quotes)
+            print("\n=== FULL TEXT ===")
+            print(article["text"])
             print("-" * 50)
 
             insert_article(
@@ -355,7 +480,7 @@ def main():
                 url=article["url"],
                 title=article["title"],
                 author=article["author"],
-                article_text=article["text"],  # NOW STORING FULL TEXT
+                article_text=article["text"],
                 core_thesis=core_thesis,
                 detailed_abstract=detailed_abstract,
                 supporting_data_quotes=supporting_data_quotes
