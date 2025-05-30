@@ -4,7 +4,9 @@ def test_with_selenium():
         import pickle
         import os
         import time
+        from webdriver_manager.chrome import ChromeDriverManager
         options = uc.ChromeOptions()
+        options.binary_location = "/usr/bin/chromium-browser"
         # Enable headless mode for cloud environment
         options.add_argument("--headless")
         options.add_argument("--disable-gpu")
@@ -13,7 +15,7 @@ def test_with_selenium():
         # Open browser in a small window
         options.add_argument("--window-size=400,300")
         # Use ChromeDriver from PATH instead of hardcoded location
-        driver = uc.Chrome(options=options)
+        driver = uc.Chrome(options=options, driver_executable_path=ChromeDriverManager().install())
         url = "https://www.foreignaffairs.com/most-recent"
         cookies_file = "cookies.pkl"
         # If cookies file exists, load cookies before visiting the page
@@ -153,6 +155,7 @@ def extract_latest_article_urls(num_links_to_retrieve=3):
         import time
         from bs4 import BeautifulSoup
         options = uc.ChromeOptions()
+        options.binary_location = "/usr/bin/chromium-browser"
         # Enable headless mode for cloud environment
         options.add_argument("--headless")
         options.add_argument("--disable-gpu")
@@ -161,7 +164,8 @@ def extract_latest_article_urls(num_links_to_retrieve=3):
         # Open browser in a small window
         options.add_argument("--window-size=400,300")
         # Use ChromeDriver from PATH instead of hardcoded location
-        driver = uc.Chrome(options=options)
+        from webdriver_manager.chrome import ChromeDriverManager
+        driver = uc.Chrome(options=options, driver_executable_path=ChromeDriverManager().install())
         url = "https://www.foreignaffairs.com/most-recent"
         cookies_file = "cookies.pkl"
         # If cookies file exists, load cookies before visiting the page
@@ -240,6 +244,7 @@ def extract_foreign_affairs_article(url):
         import time
         from bs4 import BeautifulSoup
         options = uc.ChromeOptions()
+        options.binary_location = "/usr/bin/chromium-browser"
         # Enable headless mode for cloud environment
         options.add_argument("--headless")
         options.add_argument("--disable-gpu")
@@ -248,7 +253,8 @@ def extract_foreign_affairs_article(url):
         # Open browser in a small window
         options.add_argument("--window-size=400,300")
         # Use ChromeDriver from PATH instead of hardcoded location
-        driver = uc.Chrome(options=options)
+        from webdriver_manager.chrome import ChromeDriverManager
+        driver = uc.Chrome(options=options, driver_executable_path=ChromeDriverManager().install())
         cookies_file = "cookies.pkl"
         # If cookies file exists, load cookies before visiting the page
         if os.path.exists(cookies_file):
