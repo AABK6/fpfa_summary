@@ -30,9 +30,11 @@ jobs:
 
       - name: Run first script with argument
         run: python summarize_fa.py 7
+        continue-on-error: true
 
       - name: Run second script with argument
         run: python summarize_fp.py 7
+        continue-on-error: true
 
       - name: Configure Git
         run: |
