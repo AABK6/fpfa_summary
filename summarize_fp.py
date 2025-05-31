@@ -261,7 +261,7 @@ def generate_supporting_data_quotes(client: genai.Client, article: dict) -> str:
 
 def main():
     if len(sys.argv) < 2:
-        num_articles_to_summarize = 3
+        num_articles_to_summarize = 10
     else:
         try:
             num_articles_to_summarize = int(sys.argv[1])
