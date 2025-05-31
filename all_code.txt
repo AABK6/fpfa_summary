@@ -1,0 +1,1890 @@
+
+##### START FILE: /home/aabecassis/Projects/fpfa_summary/app.py #####
+
+from flask import Flask, render_template
+import sqlite3
+
+app = Flask(__name__)
+
+def get_latest_articles(limit=10):
+    """
+    Fetch the latest articles from the 'articles' table,
+    sorted by date_added (descending), limited to 'limit' results.
+    """
+    conn = sqlite3.connect('articles.db')
+    cursor = conn.cursor()
+    # Ensure your table is named 'articles' as in your scripts
+    cursor.execute('''
+        SELECT 
+            id, source, url, title, author, article_text,
+            core_thesis, detailed_abstract, supporting_data_quotes, date_added
+        FROM articles
+        ORDER BY date_added DESC
+        LIMIT ?
+    ''', (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    articles = []
+    for row in rows:
+        articles.append({
+            "id": row[0],
+            "source": row[1],
+            "url": row[2],
+            "title": row[3],
+            "author": row[4],
+            "article_text": row[5],
+            "core_thesis": row[6],
+            "detailed_abstract": row[7],
+            "supporting_data_quotes": row[8],
+            "date_added": row[9],
+        })
+    articles.reverse()  # Reverse the order to show latest
+    return articles
+
+@app.route('/')
+def home():
+    """
+    Main route: Fetch and display the latest articles in a card-based layout.
+    Articles are sorted latest-first by date_added DESC.
+    """
+    articles = get_latest_articles(limit=20)
+    return render_template('index.html', articles=articles)
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
+##### END FILE: /home/aabecassis/Projects/fpfa_summary/app.py #####
+
+
+
+##### START FILE: /home/aabecassis/Projects/fpfa_summary/summarize_fp.py #####
+
+import requests
+from bs4 import BeautifulSoup
+import re
+import sys
+from google import genai
+from google.genai import types
+import os
+
+# ======= DATABASE IMPORTS AND FUNCTIONS (MINIMAL ADDITION) =======
+import sqlite3
+
+def init_db(db_path="articles.db"):
+    """
+    Creates (if not exists) a table 'articles' for storing article data.
+    Includes a column 'article_text' to store the full text of the article.
+    The URL is declared UNIQUE to skip duplicates.
+    """
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT,
+            url TEXT UNIQUE,
+            title TEXT,
+            author TEXT,
+            article_text TEXT,
+            core_thesis TEXT,
+            detailed_abstract TEXT,
+            supporting_data_quotes TEXT,
+            date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    return conn
+
+def insert_article(conn, source, url, title, author, article_text,
+                   core_thesis, detailed_abstract, supporting_data_quotes):
+    """
+    Inserts an article into the database table 'articles'.
+    Skips if the URL is already present (UNIQUE constraint).
+    """
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO articles
+            (source, url, title, author, article_text,
+             core_thesis, detailed_abstract, supporting_data_quotes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (source, url, title, author, article_text,
+              core_thesis, detailed_abstract, supporting_data_quotes))
+        conn.commit()
+        print(f"Inserted article into DB: {title}")
+    except sqlite3.IntegrityError:
+        # We'll handle pre-existing articles in main() by checking first
+        pass
+
+def get_article_by_url(conn, url):
+    """
+    Returns (title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes) if present,
+    or None if not found.
+    """
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT title, author, article_text, core_thesis,
+               detailed_abstract, supporting_data_quotes
+        FROM articles
+        WHERE url = ?
+    ''', (url,))
+    return cursor.fetchone()
+
+"""
+Usage:
+    python summarize_fp.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]
+
+Description:
+    - Scrapes article URLs from Foreign Policy listing page.
+    - Extracts text content from each article.
+    - Summarizes each article using Gemini API.
+"""
+
+def scrape_foreignpolicy_article(url):
+    """
+    Fetch the Foreign Policy article, remove paywall references,
+    and return the title, author, and full article text.
+    """
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/100.0.4896.127 Safari/537.36"
+        )
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        html = response.text
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching URL {url}: {e}")
+        return None
+
+    html = re.sub(r'<script[^>]+(?:piano\\.io|cxense\\.com)[^>]+></script>', '', html)
+
+    soup = BeautifulSoup(html, "html.parser")
+
+    title_elem = soup.select_one("div.hed-heading h1.hed")
+    title = title_elem.get_text(strip=True) if title_elem else "No Title Found"
+
+    meta_author = soup.find("meta", attrs={"name": "author"})
+    if meta_author and meta_author.get("content"):
+        author = meta_author["content"].strip()
+    else:
+        author_div = soup.select_one("div.author-bio-text")
+        if author_div:
+            author_text = author_div.get_text(strip=True)
+            author = author_text.replace("By ", "").strip()
+        else:
+            author = "No Author Found"
+
+    content_parts = []
+    ungated = soup.select_one("div.content-ungated")
+    if ungated:
+        paragraphs = ungated.find_all("p")
+        for p in paragraphs:
+            text = p.get_text(strip=True)
+            if text:
+                content_parts.append(text)
+
+    gated = soup.select_one("div.content-gated--main-article")
+    if gated:
+        paragraphs = gated.find_all("p")
+        for p in paragraphs:
+            text = p.get_text(strip=True)
+            if text:
+                content_parts.append(text)
+
+    article_body = "\n\n".join(content_parts)
+
+    return {
+        "title": title,
+        "author": author,
+        "text": article_body
+    }
+
+def scrape_foreignpolicy_article_list(num_links=3):
+    """
+    Fetches a Foreign Policy listing page and extracts article URLs.
+    """
+    url = "https://foreignpolicy.com/category/latest/"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/100.0.4896.127 Safari/537.36"
+        )
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        html_content = response.text
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching article list: {e}")
+        return []
+
+    html_content = re.sub(r'<script[^>]+(?:piano\.io|cxense\\.com)[^>]+></script>', '', html_content)
+    soup = BeautifulSoup(html_content, 'html.parser')
+
+    article_urls = []
+    article_containers = soup.find_all('div', class_='blog-list-layout')
+    for container in article_containers:
+        figure_tag = container.find('figure', class_='figure-image')
+        if figure_tag:
+            link_tag = figure_tag.find('a')
+            if link_tag and 'href' in link_tag.attrs:
+                article_url = link_tag['href']
+                article_urls.append(article_url)
+                if len(article_urls) >= num_links:
+                    break
+    return article_urls
+
+def create_client(api_key: str) -> genai.Client:
+    """
+    Creates a Gemini Developer API client.
+    """
+    client = genai.Client(api_key=api_key)
+    return client
+
+def generate_core_thesis(client: genai.Client, article: dict) -> str:
+    """
+    Generates the Core Thesis in 1-2 sentences.
+    """
+    prompt = f"""
+    Task: Write 1-2 dense sentences capturing the main conclusion or central argument
+    of the above article, focusing only on the primary claim or takeaway without supporting details.
+    
+    Title: {article['title']}
+    Author: {article['author']}
+    Text: {article['text']}
+    """
+
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=prompt
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Error generating core thesis: {e}")
+        return "Summary generation failed."
+
+def generate_detailed_abstract(client: genai.Client, article: dict) -> str:
+    """
+    Generates an abstract that expands on the core thesis.
+    """
+    prompt = f"""
+    Task: Provide 1-2 dense paragraphs summarizing the main arguments and points
+    of the article. Include essential background, the progression of ideas, and explain
+    any important concepts the article uses to develop its case.
+    Do not add anything else than the summary, and remove any unnecessary words.
+
+    Title: {article['title']}
+    Author: {article['author']}
+    Text: {article['text']}
+    """
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.0-flash-thinking-exp-01-21',
+            contents=prompt
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Error generating detailed abstract: {e}")
+        return "Summary generation failed."
+
+
+def generate_supporting_data_quotes(client: genai.Client, article: dict) -> str:
+    """
+    Highlights critical data points and direct quotes from the article.
+    """
+    prompt = f"""
+    Task: Extract and list:
+    - The most important factual data points or statistics from the article.
+    - 2-3 key direct quotes verbatim, capturing the article's ethos or perspective.
+
+    Present them as bullet points or a short list, preserving the article's original style in the quotes. Do not add anything esle than the bullet points.
+
+    Title: {article['title']}
+    Author: {article['author']}
+    Text: {article['text']}
+    """
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.0-flash-thinking-exp-01-21',
+            contents=prompt
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Error generating supporting data/quotes: {e}")
+        return "Summary generation failed."
+
+
+def main():
+    if len(sys.argv) < 2:
+        num_articles_to_summarize = 10
+    else:
+        try:
+            num_articles_to_summarize = int(sys.argv[1])
+            if num_articles_to_summarize <= 0:
+                print("Please provide a positive number of articles to summarize.")
+                sys.exit(1)
+        except ValueError:
+            print("Usage: python summarize_fp.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]")
+            print("       Please provide a valid integer for the number of articles.")
+            sys.exit(1)
+
+    article_urls = scrape_foreignpolicy_article_list(num_articles_to_summarize)
+
+    if not article_urls:
+        print("No article URLs found. Exiting.")
+        sys.exit(1)
+
+    # === Initialize Database (MINIMAL ADDITION) ===
+    conn = init_db("articles.db")
+
+    articles_data = []
+    for url in article_urls:
+        print(f"Scraping article from: {url}")
+        article_data = scrape_foreignpolicy_article(url)
+        if article_data:
+            # Attach the URL to the data so we can store and check it
+            article_data["url"] = url
+            articles_data.append(article_data)
+        else:
+            print(f"Failed to scrape article from: {url}")
+
+    if not articles_data:
+        print("No article data scraped successfully. Exiting.")
+        sys.exit(1)
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("Error: GEMINI_API_KEY environment variable not set.")
+        print("Please set your Gemini API key as an environment variable named GEMINI_API_KEY.")
+        sys.exit(1)
+
+    client = create_client(api_key)
+
+    print("\n--- Article Summaries ---")
+    for article in articles_data:
+        # Check if article already in DB
+        existing_record = get_article_by_url(conn, article["url"])
+        if existing_record:
+            # If found in DB, just print what's stored
+            db_title, db_author, db_article_text, db_core_thesis, db_detailed_abstract, db_supporting_data_quotes = existing_record
+            print(f"\n--- ARTICLE (FROM DB): {db_title} by {db_author} ---")
+            print("\n=== CORE THESIS ===")
+            print(db_core_thesis)
+            print("\n=== DETAILED ABSTRACT ===")
+            print(db_detailed_abstract)
+            print("\n=== SUPPORTING DATA AND QUOTES ===")
+            print(db_supporting_data_quotes)
+            print("-" * 50)
+        else:
+            # Summarize and insert
+            print(f"\n--- ARTICLE: {article['title']} by {article['author']} ---")
+            core_thesis = generate_core_thesis(client, article)
+            detailed_abstract = generate_detailed_abstract(client, article)
+            supporting_data_quotes = generate_supporting_data_quotes(client, article)
+
+            print("\n=== CORE THESIS ===")
+            print(core_thesis)
+            print("\n=== DETAILED ABSTRACT ===")
+            print(detailed_abstract)
+            print("\n=== SUPPORTING DATA AND QUOTES ===")
+            print(supporting_data_quotes)
+            print("-" * 50)
+
+            # Store in DB
+            insert_article(
+                conn,
+                source="Foreign Policy",
+                url=article["url"],
+                title=article["title"],
+                author=article["author"],
+                article_text=article["text"],  # Storing full text
+                core_thesis=core_thesis,
+                detailed_abstract=detailed_abstract,
+                supporting_data_quotes=supporting_data_quotes
+            )
+
+    conn.close()
+
+if __name__ == "__main__":
+    main()
+
+##### END FILE: /home/aabecassis/Projects/fpfa_summary/summarize_fp.py #####
+
+
+
+##### START FILE: /home/aabecassis/Projects/fpfa_summary/summarize_fa.py #####
+
+def test_with_selenium():
+    try:
+        import undetected_chromedriver as uc
+        import pickle
+        import os
+        import time
+        from webdriver_manager.chrome import ChromeDriverManager
+        options = uc.ChromeOptions()
+        options.binary_location = "/usr/bin/chromium-browser"
+        # Enable headless mode for cloud environment
+        options.add_argument("--headless")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
+        # Open browser in a small window
+        options.add_argument("--window-size=400,300")
+        # Use ChromeDriver from PATH instead of hardcoded location
+        driver = uc.Chrome(options=options, driver_executable_path=ChromeDriverManager().install())
+        url = "https://www.foreignaffairs.com/most-recent"
+        cookies_file = "cookies.pkl"
+        # If cookies file exists, load cookies before visiting the page
+        if os.path.exists(cookies_file):
+            driver.get("https://www.foreignaffairs.com/")
+            with open(cookies_file, "rb") as f:
+                cookies = pickle.load(f)
+            for cookie in cookies:
+                # Selenium expects expiry as int, not float
+                if isinstance(cookie.get('expiry', None), float):
+                    cookie['expiry'] = int(cookie['expiry'])
+                try:
+                    driver.add_cookie(cookie)
+                except Exception as e:
+                    print(f"Cookie import error: {e}")
+            driver.get(url)
+            time.sleep(3)
+            html = driver.page_source
+            print("Selenium page source (first 200 chars):")
+            print(html[:200])
+            # Auto-delete cookies and retry if Cloudflare block detected
+            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
+                print("Cloudflare block detected. Deleting cookies and retrying...")
+                driver.quit()
+                os.remove(cookies_file)
+                # Recursively retry
+                test_with_selenium()
+                return
+        else:
+            print("No cookies found. Loading page and waiting 10 seconds for login/session cookies to be set...")
+            driver.get(url)
+            time.sleep(10)  # Wait for login/session cookies to be set
+            # Save cookies after waiting
+            cookies = driver.get_cookies()
+            with open(cookies_file, "wb") as f:
+                pickle.dump(cookies, f)
+            print(f"Saved {len(cookies)} cookies to {cookies_file}. Re-run to use them automatically.")
+            html = driver.page_source
+            print("Selenium page source (first 200 chars):")
+            print(html[:200])
+            # Auto-delete cookies and retry if Cloudflare block detected
+            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
+                print("Cloudflare block detected. Deleting cookies and retrying...")
+                driver.quit()
+                os.remove(cookies_file)
+                # Recursively retry
+                test_with_selenium()
+                return
+        driver.quit()
+    except Exception as e:
+        print(f"Selenium Exception: {e}")
+import requests
+from bs4 import BeautifulSoup
+import re
+import sys
+import os
+from google import genai
+from google.genai import types
+
+# === DATABASE IMPORT (MINIMAL ADDITION) ===
+import sqlite3
+
+def init_db(db_path="articles.db"):
+    """
+    Creates (if not exists) a table 'articles' for storing article data.
+    Includes a column 'article_text' to store the full text of the article.
+    The URL is declared UNIQUE to skip duplicates.
+    """
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT,
+            url TEXT UNIQUE,
+            title TEXT,
+            author TEXT,
+            article_text TEXT,
+            core_thesis TEXT,
+            detailed_abstract TEXT,
+            supporting_data_quotes TEXT,
+            date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    return conn
+
+def insert_article(conn, source, url, title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes):
+    """
+    Inserts an article into the database table 'articles'.
+    Skips if the URL is already present (UNIQUE constraint).
+    """
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO articles
+            (source, url, title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (source, url, title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes))
+        conn.commit()
+        print(f"Inserted article into DB: {title}")
+    except sqlite3.IntegrityError:
+        pass  # We'll handle existing articles in the main() logic
+
+def get_article_by_url(conn, url):
+    """
+    Returns (title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes) if present,
+    or None if not found.
+    """
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes
+        FROM articles
+        WHERE url = ?
+    ''', (url,))
+    return cursor.fetchone()
+
+"""
+Usage:
+    python summarize_fp.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]
+
+Description:
+    - Scrapes article URLs from Foreign Affairs listing page.
+    - Extracts text content from each article.
+    - Summarizes each article using Gemini API, now with the EXACTLY CORRECT SDK imports.
+"""
+
+
+def extract_latest_article_urls(num_links_to_retrieve=3):
+    """
+    Extracts a specified number of latest article URLs (excluding podcasts) using Selenium for robust scraping.
+    """
+    try:
+        import undetected_chromedriver as uc
+        import pickle
+        import os
+        import time
+        from bs4 import BeautifulSoup
+        options = uc.ChromeOptions()
+        options.binary_location = "/usr/bin/chromium-browser"
+        # Enable headless mode for cloud environment
+        options.add_argument("--headless")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
+        # Open browser in a small window
+        options.add_argument("--window-size=400,300")
+        # Use ChromeDriver from PATH instead of hardcoded location
+        from webdriver_manager.chrome import ChromeDriverManager
+        driver = uc.Chrome(options=options, driver_executable_path=ChromeDriverManager().install())
+        url = "https://www.foreignaffairs.com/most-recent"
+        cookies_file = "cookies.pkl"
+        # If cookies file exists, load cookies before visiting the page
+        if os.path.exists(cookies_file):
+            driver.get("https://www.foreignaffairs.com/")
+            with open(cookies_file, "rb") as f:
+                cookies = pickle.load(f)
+            for cookie in cookies:
+                if isinstance(cookie.get('expiry', None), float):
+                    cookie['expiry'] = int(cookie['expiry'])
+                try:
+                    driver.add_cookie(cookie)
+                except Exception as e:
+                    print(f"Cookie import error: {e}")
+            driver.get(url)
+            time.sleep(2)
+            html = driver.page_source
+            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
+                print("Cloudflare block detected. Deleting cookies and retrying...")
+                driver.quit()
+                os.remove(cookies_file)
+                # Recursively retry
+                return extract_latest_article_urls(num_links_to_retrieve)
+        else:
+            print("No cookies found. Loading page and waiting 10 seconds for login/session cookies to be set...")
+            driver.get(url)
+            time.sleep(3)
+            cookies = driver.get_cookies()
+            with open(cookies_file, "wb") as f:
+                pickle.dump(cookies, f)
+            html = driver.page_source
+            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
+                print("Cloudflare block detected. Deleting cookies and retrying...")
+                driver.quit()
+                os.remove(cookies_file)
+                return extract_latest_article_urls(num_links_to_retrieve)
+        driver.quit()
+        soup = BeautifulSoup(html, 'html.parser')
+        article_cards = soup.find_all('div', class_='card--large')
+        if not article_cards:
+            return None
+        article_urls = []
+        links_retrieved_count = 0
+        for card in article_cards:
+            if links_retrieved_count >= num_links_to_retrieve:
+                break
+            h3_link = card.find('h3', class_='body-m').find('a') if card.find('h3', class_='body-m') else None
+            if h3_link and h3_link.has_attr('href'):
+                extracted_url = "https://www.foreignaffairs.com" + h3_link['href']
+                if "podcasts" not in extracted_url.lower():
+                    article_urls.append(extracted_url)
+                    links_retrieved_count += 1
+                    continue
+            if links_retrieved_count >= num_links_to_retrieve:
+                break
+            h4_link = card.find('h4', class_='body-s').find('a') if card.find('h4', class_='body-s') else None
+            if h4_link and h4_link.has_attr('href'):
+                extracted_url = "https://www.foreignaffairs.com" + h4_link['href']
+                if "podcasts" not in extracted_url.lower():
+                    article_urls.append(extracted_url)
+                    links_retrieved_count += 1
+        return article_urls
+    except Exception as e:
+        print(f"Selenium Exception (URL extraction): {e}")
+        return None
+
+
+def extract_foreign_affairs_article(url):
+    """
+    Extracts the title, author, and text content of a Foreign Affairs article using Selenium (bypassing 403s).
+    """
+    try:
+        import undetected_chromedriver as uc
+        import pickle
+        import os
+        import time
+        from bs4 import BeautifulSoup
+        options = uc.ChromeOptions()
+        options.binary_location = "/usr/bin/chromium-browser"
+        # Enable headless mode for cloud environment
+        options.add_argument("--headless")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
+        # Open browser in a small window
+        options.add_argument("--window-size=400,300")
+        # Use ChromeDriver from PATH instead of hardcoded location
+        from webdriver_manager.chrome import ChromeDriverManager
+        driver = uc.Chrome(options=options, driver_executable_path=ChromeDriverManager().install())
+        cookies_file = "cookies.pkl"
+        # If cookies file exists, load cookies before visiting the page
+        if os.path.exists(cookies_file):
+            driver.get("https://www.foreignaffairs.com/")
+            with open(cookies_file, "rb") as f:
+                cookies = pickle.load(f)
+            for cookie in cookies:
+                if isinstance(cookie.get('expiry', None), float):
+                    cookie['expiry'] = int(cookie['expiry'])
+                try:
+                    driver.add_cookie(cookie)
+                except Exception as e:
+                    print(f"Cookie import error: {e}")
+            driver.get(url)
+            time.sleep(3)
+            html = driver.page_source
+            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
+                print("Cloudflare block detected. Deleting cookies and retrying...")
+                driver.quit()
+                os.remove(cookies_file)
+                # Recursively retry
+                return extract_foreign_affairs_article(url)
+        else:
+            print("No cookies found. Loading page and waiting 10 seconds for login/session cookies to be set...")
+            driver.get(url)
+            time.sleep(10)
+            cookies = driver.get_cookies()
+            with open(cookies_file, "wb") as f:
+                pickle.dump(cookies, f)
+            html = driver.page_source
+            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
+                print("Cloudflare block detected. Deleting cookies and retrying...")
+                driver.quit()
+                os.remove(cookies_file)
+                return extract_foreign_affairs_article(url)
+        driver.quit()
+        soup = BeautifulSoup(html, 'html.parser')
+        # Extract Title
+        title_element = soup.find('h1', class_='topper__title')
+        title = title_element.text.strip() if title_element else "Title Not Found"
+        # Extract Subtitle (optional, if you want to include it)
+        subtitle_element = soup.find('h2', class_='topper__subtitle')
+        subtitle = subtitle_element.text.strip() if subtitle_element else ""
+        # Extract Author
+        author_element = soup.find('h3', class_='topper__byline')
+        author = author_element.text.strip() if author_element else "Author Not Found"
+        # Extract Article Text
+        article_content = soup.find('article')
+        if not article_content:
+            article_content = soup.find('div', class_='article-body')
+        if not article_content:
+            article_content = soup.find('div', class_='Article__body')
+        if not article_content:
+            article_content = soup.find('main')
+        if not article_content:
+            article_text = "Article Text Not Found"
+        else:
+            paragraphs = article_content.find_all('p')
+            if not paragraphs:
+                paragraphs = article_content.find_all('div', class_='paragraph')
+            article_text_list = []
+            for p in paragraphs:
+                article_text_list.append(p.text.strip())
+            article_text = "\n\n".join(article_text_list)
+        return {
+            "title": title,
+            "subtitle": subtitle,
+            "author": author,
+            "text": article_text
+        }
+    except Exception as e:
+        print(f"Selenium Exception (article scraping): {e}")
+        return None
+
+def create_client(api_key: str) -> genai.Client:
+    """
+    Creates a Gemini Pro API client using the 'google' SDK.
+    """
+    client = genai.Client(api_key=api_key)
+    return client
+
+def generate_core_thesis(client: genai.Client, article: dict) -> str:
+    """
+    Generates the Core Thesis in 1-2 sentences.
+    """
+    prompt = f"""
+    Task: Write 1-2 dense sentences capturing the main conclusion or central argument
+    of the above article, focusing only on the primary claim or takeaway without supporting details.
+
+    Title: {article['title']}
+    Author: {article['author']}
+    Text: {article['text']}
+    """
+
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=prompt
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Error generating core thesis: {e}")
+        return "Summary generation failed."
+
+def generate_detailed_abstract(client: genai.Client, article: dict) -> str:
+    """
+    Generates an abstract that expands on the core thesis.
+    """
+    prompt = f"""
+    Task: Provide two dense paragraphs summarizing the main arguments and points
+    of the article. Include essential background, the progression of ideas, and explain
+    any important concepts the article uses to develop its case.
+    Do not add anything else than the summary, and remove any unnecessary words.
+
+    Title: {article['title']}
+    Author: {article['author']}
+    Text: {article['text']}
+    """
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.0-flash-thinking-exp-01-21',
+            contents=prompt
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Error generating detailed abstract: {e}")
+        return "Summary generation failed."
+
+def generate_supporting_data_quotes(client: genai.Client, article: dict) -> str:
+    """
+    Highlights critical data points and direct quotes from the article.
+    """
+    prompt = f"""
+    Task: Extract and list:
+    - The most important factual data points or statistics from the article.
+    - 2-3 key direct quotes verbatim, capturing the article's ethos or perspective.
+
+    Present them as bullet points or a short list, preserving the article's original style in the quotes. Do not add anything esle than the bullet points.
+
+    Title: {article['title']}
+    Author: {article['author']}
+    Text: {article['text']}
+    """
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.0-flash-thinking-exp-01-21',
+            contents=prompt
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Error generating supporting data/quotes: {e}")
+        return "Summary generation failed."
+
+def main():
+    if len(sys.argv) < 2:
+        num_articles_to_summarize = 3
+    else:
+        try:
+            num_articles_to_summarize = int(sys.argv[1])
+            if num_articles_to_summarize <= 0:
+                print("Please provide a positive number of articles to summarize.")
+                sys.exit(1)
+        except ValueError:
+            print("Usage: python summarize_fp.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]")
+            print("       Please provide a valid integer for the number of articles.")
+            sys.exit(1)
+
+    article_urls = extract_latest_article_urls(num_articles_to_summarize)
+
+    if not article_urls:
+        print("No article URLs found. Exiting.")
+        sys.exit(1)
+
+    articles_data = []
+    for url in article_urls:
+        print(f"Scraping article from: {url}")
+        article_data = extract_foreign_affairs_article(url)
+        if article_data:
+            # === ADD URL TO ARTICLE DATA (MINIMAL ADDITION) ===
+            article_data["url"] = url
+            articles_data.append(article_data)
+        else:
+            print(f"Failed to scrape article from: {url}")
+
+    if not articles_data:
+        print("No article data scraped successfully. Exiting.")
+        sys.exit(1)
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("Error: GEMINI_API_KEY environment variable not set.")
+        print("Please set your Gemini API key as an environment variable named GEMINI_API_KEY.")
+        sys.exit(1)
+
+    model = create_client(api_key)
+
+    # === INITIALIZE DATABASE (MINIMAL ADDITION) ===
+    conn = init_db("articles.db")
+
+    print("\n--- Article Summaries ---")
+    for article in articles_data:
+        existing_record = get_article_by_url(conn, article["url"])
+        if existing_record:
+            # If found in DB, just print what's stored
+            db_title, db_author, db_article_text, db_core_thesis, db_detailed_abstract, db_supporting_data_quotes = existing_record
+            print(f"\n--- ARTICLE (FROM DB): {db_title} by {db_author} ---")
+            print("\n=== CORE THESIS ===")
+            print(db_core_thesis)
+            print("\n=== DETAILED ABSTRACT ===")
+            print(db_detailed_abstract)
+            print("\n=== SUPPORTING DATA AND QUOTES ===")
+            print(db_supporting_data_quotes)
+            print("\n=== FULL TEXT ===")
+            print(db_article_text)
+            print("-" * 50)
+        else:
+            # Otherwise, generate new summaries and store them
+            print(f"\n--- ARTICLE: {article['title']} by {article['author']} ---")
+
+            core_thesis = generate_core_thesis(model, article)
+            detailed_abstract = generate_detailed_abstract(model, article)
+            supporting_data_quotes = generate_supporting_data_quotes(model, article)
+
+            print("\n=== CORE THESIS ===")
+            print(core_thesis)
+            print("\n=== DETAILED ABSTRACT ===")
+            print(detailed_abstract)
+            print("\n=== SUPPORTING DATA AND QUOTES ===")
+            print(supporting_data_quotes)
+            print("\n=== FULL TEXT ===")
+            print(article["text"])
+            print("-" * 50)
+
+            insert_article(
+                conn,
+                source="Foreign Affairs",
+                url=article["url"],
+                title=article["title"],
+                author=article["author"],
+                article_text=article["text"],
+                core_thesis=core_thesis,
+                detailed_abstract=detailed_abstract,
+                supporting_data_quotes=supporting_data_quotes
+            )
+
+    conn.close()
+
+if __name__ == "__main__":
+    main()
+
+##### END FILE: /home/aabecassis/Projects/fpfa_summary/summarize_fa.py #####
+
+
+
+##### START FILE: /home/aabecassis/Projects/fpfa_summary/combine_files.py #####
+
+import os
+import argparse
+
+# Define the directory to scan and the output file
+parser = argparse.ArgumentParser(description="Combine code files into one text file.")
+parser.add_argument('--nodir', action='store_true', help='Exclude all subdirectories from scan')
+parser.add_argument('--exclude', default="", help='Comma separated list of subdirectory names to exclude in addition to defaults')
+args = parser.parse_args()
+
+base_dir = os.getcwd()  # Set base directory as current working directory
+output_file = os.path.join(base_dir, 'all_code.txt')
+
+# Extensions to include
+extensions = {'.py', '.js', '.java', '.html', '.css', '.yaml', '.md'}
+
+# Default directories and files to exclude
+default_exclude_dirs = {'.env', '.venv', '__pycache__', '.git'}
+default_exclude_files = {'.gitignore'}
+
+# Combine user-specified exclude dirs if provided
+exclude_dirs = set(default_exclude_dirs)
+if args.exclude:
+    exclude_dirs.update({d.strip() for d in args.exclude.split(',') if d.strip()})
+
+with open(output_file, 'w', encoding='utf-8') as outfile:
+    for root, dirs, files in os.walk(base_dir):
+        # If excluding all subdirectories, skip any root that's not the base directory
+        if args.nodir and root != base_dir:
+            continue
+        # Remove any directories that should be excluded
+        dirs[:] = [d for d in dirs if d not in exclude_dirs]
+        for file in files:
+            if file in default_exclude_files:
+                continue
+            if any(file.endswith(ext) for ext in extensions):
+                file_path = os.path.join(root, file)
+                # Write a header line with the file path
+                outfile.write(f"\n##### START FILE: {file_path} #####\n\n")
+                with open(file_path, 'r', encoding='utf-8') as infile:
+                    outfile.write(infile.read())
+                outfile.write(f"\n##### END FILE: {file_path} #####\n\n\n")
+
+##### END FILE: /home/aabecassis/Projects/fpfa_summary/combine_files.py #####
+
+
+
+##### START FILE: /home/aabecassis/Projects/fpfa_summary/testvpn.py #####
+
+import requests
+from bs4 import BeautifulSoup
+import re
+import sys
+import os
+from google import genai
+from google.genai import types
+import sqlite3
+from urllib.parse import quote
+
+# --- Add persistent VPN session --- 
+def get_vpn_session():
+    username = "7TCvACC84BTZPPxe4TWCSwks"
+    password = "4qgZrr5fgBcH1pCfqFZT4ZVq"
+    server = "se.socks.nordhold.net"
+    port = 1080
+
+    # URL encode credentials in case of special characters
+    username_enc = quote(username)
+    password_enc = quote(password)
+    proxy_str = f"{username_enc}:{password_enc}@{server}:{port}"
+    proxies = {
+        "http": f"socks5://{proxy_str}",
+        "https": f"socks5://{proxy_str}"
+    }
+    session = requests.Session()
+    session.proxies.update(proxies)
+    return session
+
+# Initialize a global persistent session with NordVPN proxy
+session = get_vpn_session()
+
+# === DATABASE IMPORT (MINIMAL ADDITION) ===
+def init_db(db_path="articles.db"):
+    """
+    Creates (if not exists) a table 'articles' for storing article data.
+    Includes a column 'article_text' to store the full text of the article.
+    The URL is declared UNIQUE to skip duplicates.
+    """
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT,
+            url TEXT UNIQUE,
+            title TEXT,
+            author TEXT,
+            article_text TEXT,
+            core_thesis TEXT,
+            detailed_abstract TEXT,
+            supporting_data_quotes TEXT,
+            date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    return conn
+
+def insert_article(conn, source, url, title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes):
+    """
+    Inserts an article into the database table 'articles'.
+    Skips if the URL is already present (UNIQUE constraint).
+    """
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO articles
+            (source, url, title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (source, url, title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes))
+        conn.commit()
+        print(f"Inserted article into DB: {title}")
+    except sqlite3.IntegrityError:
+        pass  # We'll handle existing articles in the main() logic
+
+def get_article_by_url(conn, url):
+    """
+    Returns (title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes) if present,
+    or None if not found.
+    """
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes
+        FROM articles
+        WHERE url = ?
+    ''', (url,))
+    return cursor.fetchone()
+
+"""
+Usage:
+    python summarize_fp.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]
+
+Description:
+    - Scrapes article URLs from Foreign Affairs listing page.
+    - Extracts text content from each article.
+    - Summarizes each article using Gemini API, now with the EXACTLY CORRECT SDK imports.
+"""
+
+def extract_latest_article_urls(num_links_to_retrieve=3):
+    """
+    Extracts a specified number of latest article URLs (excluding podcasts).
+    (URL extraction function - same as before)
+    """
+    url = "https://www.foreignaffairs.com/most-recent"
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Connection': 'keep-alive'
+        }
+        # <-- MINIMAL CHANGE: use our persistent session instead of requests.get
+        response = session.get(url, headers=headers)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.content, 'html.parser')
+
+        article_cards = soup.find_all('div', class_='card--large')
+        if not article_cards:
+            return None
+
+        article_urls = []
+        links_retrieved_count = 0
+
+        for card in article_cards:
+            if links_retrieved_count >= num_links_to_retrieve:
+                break
+
+            # Find URLs in <h3> (main title)
+            h3_link = card.find('h3', class_='body-m').find('a') if card.find('h3', class_='body-m') else None
+            if h3_link and h3_link.has_attr('href'):
+                extracted_url = "https://www.foreignaffairs.com" + h3_link['href']
+                if "podcasts" not in extracted_url.lower():
+                    article_urls.append(extracted_url)
+                    links_retrieved_count += 1
+                    continue
+
+            if links_retrieved_count >= num_links_to_retrieve:
+                break
+
+            # Find URLs in <h4> (subtitle)
+            h4_link = card.find('h4', class_='body-s').find('a') if card.find('h4', class_='body-s') else None
+            if h4_link and h4_link.has_attr('href'):
+                extracted_url = "https://www.foreignaffairs.com" + h4_link['href']
+                if "podcasts" not in extracted_url.lower():
+                    article_urls.append(extracted_url)
+                    links_retrieved_count += 1
+
+        return article_urls
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching URL: {e}")
+        return None
+    except Exception as e:
+        print(f"Error parsing article URLs: {e}")
+        return None
+
+def extract_foreign_affairs_article(url):
+    """
+    Extracts the title, author, and text content of a Foreign Affairs article.
+    (Article scraping function - same as before)
+    """
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Connection': 'keep-alive'
+        }
+        # <-- MINIMAL CHANGE: use persistent session here as well
+        response = session.get(url, headers=headers)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.content, 'html.parser')
+
+        # Extract Title
+        title_element = soup.find('h1', class_='topper__title')
+        title = title_element.text.strip() if title_element else "Title Not Found"
+
+        # Extract Subtitle (optional, if you want to include it)
+        subtitle_element = soup.find('h2', class_='topper__subtitle')
+        subtitle = subtitle_element.text.strip() if subtitle_element else ""
+
+        # Extract Author
+        author_element = soup.find('h3', class_='topper__byline')
+        author = author_element.text.strip() if author_element else "Author Not Found"
+
+        # Extract Article Text
+        article_content = soup.find('article')
+        if not article_content:
+            article_content = soup.find('div', class_='article-body')
+        if not article_content:
+            article_content = soup.find('div', class_='Article__body')
+        if not article_content:
+            article_content = soup.find('main')
+
+        if not article_content:
+            article_text = "Article Text Not Found"
+        else:
+            paragraphs = article_content.find_all('p')
+            if not paragraphs:
+                paragraphs = article_content.find_all('div', class_='paragraph')
+
+            article_text_list = []
+            for p in paragraphs:
+                article_text_list.append(p.text.strip())
+            article_text = "\n\n".join(article_text_list)
+
+        return {
+            "title": title,
+            "subtitle": subtitle,
+            "author": author,
+            "text": article_text
+        }
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching URL: {e}")
+        return None
+    except Exception as e:
+        print(f"Error parsing article: {e}")
+        return None
+
+def create_client(api_key: str) -> genai.Client:
+    """
+    Creates a Gemini Pro API client using the 'google' SDK.
+    """
+    client = genai.Client(api_key=api_key)
+    return client
+
+def generate_core_thesis(client: genai.Client, article: dict) -> str:
+    """
+    Generates the Core Thesis in 1-2 sentences.
+    """
+    prompt = f"""
+    Task: Write 1-2 dense sentences capturing the main conclusion or central argument
+    of the above article, focusing only on the primary claim or takeaway without supporting details.
+
+    Title: {article['title']}
+    Author: {article['author']}
+    Text: {article['text']}
+    """
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=prompt
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Error generating core thesis: {e}")
+        return "Summary generation failed."
+
+def generate_detailed_abstract(client: genai.Client, article: dict) -> str:
+    """
+    Generates an abstract that expands on the core thesis.
+    """
+    prompt = f"""
+    Task: Provide two dense paragraphs summarizing the main arguments and points
+    of the article. Include essential background, the progression of ideas, and explain
+    any important concepts the article uses to develop its case.
+    Do not add anything else than the summary, and remove any unnecessary words.
+
+    Title: {article['title']}
+    Author: {article['author']}
+    Text: {article['text']}
+    """
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.0-flash-thinking-exp-01-21',
+            contents=prompt
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Error generating detailed abstract: {e}")
+        return "Summary generation failed."
+
+def generate_supporting_data_quotes(client: genai.Client, article: dict) -> str:
+    """
+    Highlights critical data points and direct quotes from the article.
+    """
+    prompt = f"""
+    Task: Extract and list:
+    - The most important factual data points or statistics from the article.
+    - 2-3 key direct quotes verbatim, capturing the article's ethos or perspective.
+
+    Present them as bullet points or a short list, preserving the article's original style in the quotes. Do not add anything esle than the bullet points.
+
+    Title: {article['title']}
+    Author: {article['author']}
+    Text: {article['text']}
+    """
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.0-flash-thinking-exp-01-21',
+            contents=prompt
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Error generating supporting data/quotes: {e}")
+        return "Summary generation failed."
+
+def main():
+    if len(sys.argv) < 2:
+        num_articles_to_summarize = 3
+    else:
+        try:
+            num_articles_to_summarize = int(sys.argv[1])
+            if num_articles_to_summarize <= 0:
+                print("Please provide a positive number of articles to summarize.")
+                sys.exit(1)
+        except ValueError:
+            print("Usage: python summarize_fp.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]")
+            print("       Please provide a valid integer for the number of articles.")
+            sys.exit(1)
+
+    article_urls = extract_latest_article_urls(num_articles_to_summarize)
+    if not article_urls:
+        print("No article URLs found. Exiting.")
+        sys.exit(1)
+
+    articles_data = []
+    for url in article_urls:
+        print(f"Scraping article from: {url}")
+        article_data = extract_foreign_affairs_article(url)
+        if article_data:
+            # === ADD URL TO ARTICLE DATA (MINIMAL ADDITION) ===
+            article_data["url"] = url
+            articles_data.append(article_data)
+        else:
+            print(f"Failed to scrape article from: {url}")
+
+    if not articles_data:
+        print("No article data scraped successfully. Exiting.")
+        sys.exit(1)
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("Error: GEMINI_API_KEY environment variable not set.")
+        print("Please set your Gemini API key as an environment variable named GEMINI_API_KEY.")
+        sys.exit(1)
+
+    model = create_client(api_key)
+    # === INITIALIZE DATABASE (MINIMAL ADDITION) ===
+    conn = init_db("articles.db")
+
+    print("\n--- Article Summaries ---")
+    for article in articles_data:
+        existing_record = get_article_by_url(conn, article["url"])
+        if existing_record:
+            db_title, db_author, db_article_text, db_core_thesis, db_detailed_abstract, db_supporting_data_quotes = existing_record
+            print(f"\n--- ARTICLE (FROM DB): {db_title} by {db_author} ---")
+            print("\n=== CORE THESIS ===")
+            print(db_core_thesis)
+            print("\n=== DETAILED ABSTRACT ===")
+            print(db_detailed_abstract)
+            print("\n=== SUPPORTING DATA AND QUOTES ===")
+            print(db_supporting_data_quotes)
+            print("-" * 50)
+        else:
+            print(f"\n--- ARTICLE: {article['title']} by {article['author']} ---")
+            core_thesis = generate_core_thesis(model, article)
+            detailed_abstract = generate_detailed_abstract(model, article)
+            supporting_data_quotes = generate_supporting_data_quotes(model, article)
+            print("\n=== CORE THESIS ===")
+            print(core_thesis)
+            print("\n=== DETAILED ABSTRACT ===")
+            print(detailed_abstract)
+            print("\n=== SUPPORTING DATA AND QUOTES ===")
+            print(supporting_data_quotes)
+            print("-" * 50)
+            insert_article(
+                conn,
+                source="Foreign Affairs",
+                url=article["url"],
+                title=article["title"],
+                author=article["author"],
+                article_text=article["text"],  # NOW STORING FULL TEXT
+                core_thesis=core_thesis,
+                detailed_abstract=detailed_abstract,
+                supporting_data_quotes=supporting_data_quotes
+            )
+
+    conn.close()
+
+if __name__ == "__main__":
+    main()
+
+##### END FILE: /home/aabecassis/Projects/fpfa_summary/testvpn.py #####
+
+
+
+##### START FILE: /home/aabecassis/Projects/fpfa_summary/test_scraping_methods.py #####
+
+import requests
+from bs4 import BeautifulSoup
+import time
+
+def test_with_headers(headers):
+    url = "https://www.foreignaffairs.com/most-recent"
+    try:
+        session = requests.Session()
+        session.headers.update(headers)
+        response = session.get(url)
+        print(f"Status code: {response.status_code}")
+        print("First 200 chars of response:")
+        print(response.text[:200])
+    except Exception as e:
+        print(f"Exception: {e}")
+
+def test_with_cookies(headers, cookies):
+    url = "https://www.foreignaffairs.com/most-recent"
+    try:
+        session = requests.Session()
+        session.headers.update(headers)
+        session.cookies.update(cookies)
+        response = session.get(url)
+        print(f"Status code: {response.status_code}")
+        print("First 200 chars of response:")
+        print(response.text[:200])
+    except Exception as e:
+        print(f"Exception: {e}")
+
+def test_with_selenium():
+    try:
+        import undetected_chromedriver as uc
+        import pickle
+        import os
+        options = uc.ChromeOptions()
+        # options.add_argument("--headless")  # Disable headless for manual CAPTCHA
+        options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+        # Open browser in a small window and off-screen if possible
+        options.add_argument("--window-size=400,300")
+        options.add_argument("--window-position=2000,0")  # Move window off main screen if supported
+        driver = uc.Chrome(options=options, driver_executable_path="/home/aabecassis/chromedriver")
+        url = "https://www.foreignaffairs.com/most-recent"
+        cookies_file = "cookies.pkl"
+        # If cookies file exists, load cookies before visiting the page
+        if os.path.exists(cookies_file):
+            driver.get("https://www.foreignaffairs.com/")
+            with open(cookies_file, "rb") as f:
+                cookies = pickle.load(f)
+            for cookie in cookies:
+                # Selenium expects expiry as int, not float
+                if isinstance(cookie.get('expiry', None), float):
+                    cookie['expiry'] = int(cookie['expiry'])
+                try:
+                    driver.add_cookie(cookie)
+                except Exception as e:
+                    print(f"Cookie import error: {e}")
+            driver.get(url)
+            time.sleep(3)
+            html = driver.page_source
+            print("Selenium page source (first 200 chars):")
+            print(html[:200])
+            # Auto-delete cookies and retry if Cloudflare block detected
+            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
+                print("Cloudflare block detected. Deleting cookies and retrying...")
+                driver.quit()
+                os.remove(cookies_file)
+                # Recursively retry
+                test_with_selenium()
+                return
+        else:
+            print("No cookies found. Loading page and waiting 10 seconds for login/session cookies to be set...")
+            driver.get(url)
+            time.sleep(10)  # Wait for login/session cookies to be set
+            # Save cookies after waiting
+            cookies = driver.get_cookies()
+            with open(cookies_file, "wb") as f:
+                pickle.dump(cookies, f)
+            print(f"Saved {len(cookies)} cookies to {cookies_file}. Re-run to use them automatically.")
+            html = driver.page_source
+            print("Selenium page source (first 200 chars):")
+            print(html[:200])
+            # Auto-delete cookies and retry if Cloudflare block detected
+            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
+                print("Cloudflare block detected. Deleting cookies and retrying...")
+                driver.quit()
+                os.remove(cookies_file)
+                # Recursively retry
+                test_with_selenium()
+                return
+        driver.quit()
+    except Exception as e:
+        print(f"Selenium Exception: {e}")
+
+if __name__ == "__main__":
+    print("Test 1: Current headers (Firefox UA)")
+    headers1 = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Pragma': 'no-cache',
+        'Cache-Control': 'no-cache',
+    }
+    test_with_headers(headers1)
+    print("\nTest 2: Chrome User-Agent")
+    headers2 = headers1.copy()
+    headers2['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    test_with_headers(headers2)
+    print("\nTest 3: Add Referer and Origin")
+    headers3 = headers2.copy()
+    headers3['Referer'] = 'https://www.foreignaffairs.com/'
+    headers3['Origin'] = 'https://www.foreignaffairs.com'
+    test_with_headers(headers3)
+    print("\nTest 4: With dummy cookies (replace with real cookies from browser for real test)")
+    cookies = {
+        # Example: 'cookie_name': 'cookie_value'
+        # You can copy cookies from your browser's dev tools for a real test
+    }
+    test_with_cookies(headers3, cookies)
+    print("\nTest 5: Selenium headless browser")
+    test_with_selenium()
+
+##### END FILE: /home/aabecassis/Projects/fpfa_summary/test_scraping_methods.py #####
+
+
+
+##### START FILE: /home/aabecassis/Projects/fpfa_summary/static/script.js #####
+
+document.addEventListener('DOMContentLoaded', () => {
+    const cards = document.querySelectorAll('.card');
+    const totalCards = cards.length;
+    const deck = document.querySelector('.deck');
+    const deckWidth = deck.offsetWidth;
+
+    // Assign --depth to each card (bottom card has --depth: 0, top has highest)
+    cards.forEach((card, index) => {
+        const depth = totalCards - 1 - index; // Bottom card: 0, top card: totalCards - 1
+        card.style.setProperty('--depth', depth);
+    });
+
+    // Function to measure heights offscreen with correct width
+    function measureHeights(card) {
+        const clone = card.cloneNode(true);
+        clone.style.position = 'absolute';
+        clone.style.visibility = 'hidden';
+        clone.style.width = `${deckWidth}px`; // Match actual card width
+        clone.style.height = 'auto';
+        clone.classList.remove('stacked');
+        document.body.appendChild(clone);
+
+        const titleHeight = clone.querySelector('.card-title-container').offsetHeight;
+        const frontHeight = clone.querySelector('.card-front').offsetHeight;
+        clone.classList.add('flipped');
+        const backHeight = clone.querySelector('.card-back').offsetHeight;
+        clone.querySelector('.card-back').classList.add('show-quotes');
+        const backWithQuotesHeight = clone.querySelector('.card-back').offsetHeight;
+
+        document.body.removeChild(clone);
+        return { title: titleHeight, front: frontHeight, back: backHeight, backWithQuotes: backWithQuotesHeight };
+    }
+
+    // Initialize each card with precomputed heights
+    cards.forEach(card => {
+        const heights = measureHeights(card);
+        card.dataset.titleHeight = heights.title;
+        card.dataset.frontHeight = heights.front;
+        card.dataset.backHeight = heights.back;
+        card.dataset.backWithQuotesHeight = heights.backWithQuotes;
+    });
+
+    // Function to set card state with dynamic heights
+    function setCardState(card, state) {
+        card.dataset.state = state;
+        if (state == 0) {
+            card.classList.add('stacked');
+            card.classList.remove('expanded', 'flipped');
+            card.querySelector('.card-back').classList.remove('show-quotes');
+            card.style.height = `${card.dataset.titleHeight}px`; // Fit title text
+        } else if (state == 1) {
+            card.classList.remove('stacked', 'flipped');
+            card.classList.add('expanded');
+            card.querySelector('.card-back').classList.remove('show-quotes');
+            card.style.height = `${card.dataset.frontHeight}px`; // Fit front content
+        } else if (state == 2) {
+            card.classList.remove('stacked');
+            card.classList.add('expanded', 'flipped');
+            card.querySelector('.card-back').classList.remove('show-quotes');
+            card.style.height = `${card.dataset.backHeight}px`; // Fit back content
+        } else if (state == 3) {
+            card.classList.remove('stacked');
+            card.classList.add('expanded', 'flipped');
+            card.querySelector('.card-back').classList.add('show-quotes');
+            card.style.height = `${card.dataset.backWithQuotesHeight}px`; // Fit back with quotes
+        }
+    }
+
+    // Initially, set the last card (front card) to state 1, others to state 0
+    cards.forEach((card, index) => {
+        if (index === totalCards - 1) {
+            setCardState(card, 1); // Front card (Card 1) starts expanded, showing front
+        } else {
+            setCardState(card, 0); // Other cards start stacked
+        }
+    });
+
+    // **New Code: Function to reset to original state**
+    function resetToOriginalState() {
+        cards.forEach(card => setCardState(card, 0)); // Stack all cards
+        const frontCard = cards[totalCards - 1];      // Front card is the last in DOM
+        setCardState(frontCard, 1);                   // Expand front card
+    }
+
+    // Function to check if click/touch is outside the deck
+    function isOutsideDeck(target) {
+        // Check if the click is on a card or its children
+        const isOnCard = target.closest('.card') !== null;
+        // Consider the click "outside" if it's not on a card, regardless of whether it's in the deck container
+        return !isOnCard;
+    }
+
+    // **Updated Code: Detect clicks outside the deck (desktop)**
+    document.addEventListener('click', (event) => {
+        if (isOutsideDeck(event.target)) {
+            resetToOriginalState();
+        }
+    });
+
+    // **New Code: Detect touches outside the deck (mobile)**
+    document.addEventListener('touchstart', (event) => {
+        if (isOutsideDeck(event.target)) {
+            resetToOriginalState();
+        }
+    });
+
+    // Click event for cards (unchanged)
+    cards.forEach(card => {
+        card.addEventListener('click', () => {
+            const currentState = parseInt(card.dataset.state);
+            if (currentState === 0) {
+                // Stack all cards
+                cards.forEach(c => setCardState(c, 0));
+                // Expand the clicked card to state 1
+                setCardState(card, 1);
+            } else {
+                // Cycle to next state: 1 -> 2 -> 3 -> 1
+                const nextState = (currentState % 3) + 1;
+                setCardState(card, nextState);
+            }
+        });
+    });
+
+    const deckMiddle = deck.offsetTop + (deck.offsetHeight / 2);
+    const targetScroll = deckMiddle - window.innerHeight * 0.5;
+    window.scrollTo({ top: targetScroll, behavior: 'smooth' });
+});
+##### END FILE: /home/aabecassis/Projects/fpfa_summary/static/script.js #####
+
+
+
+##### START FILE: /home/aabecassis/Projects/fpfa_summary/static/styles.css #####
+
+body {
+    font-family: 'Arial', sans-serif;
+    background: #f0f2f5;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    margin: 0;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.deck {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 600px; /* Wider cards */
+    perspective: 1500px; /* Enables 3D perspective */
+}
+
+.card {
+    width: 100%;
+    overflow: hidden;
+    transition: transform 0.3s ease, height 0.3s ease, margin-bottom 0.3s ease, box-shadow 0.3s ease;
+    margin-bottom: 20px;
+    background: #fff;
+    border-radius: 16px;
+    cursor: pointer;
+    position: relative; /* Context for inner elements */
+}
+
+.card.stacked {
+    height: 40px; /* Only title visible when stacked */
+    margin-bottom: calc(-30px + -2.7px * var(--depth)); /* Overlap cards */
+    /* Other working formula: margin-bottom: calc(-7px * (0 + 0.7 * var(--depth))); */
+    transform: translateZ(calc(-7px * var(--depth))) scale(calc(1 - 0.033 * var(--depth)));
+    z-index: calc(100 - var(--depth));
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow for stacked state */
+    transform-origin: top;
+}
+
+.card.expanded, .card.flipped {
+    transform: translateZ(0) scale(1); /* Bring to front, full size */
+    z-index: 101; /* Above all stacked cards */
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15); /* Stronger shadow when expanded */
+}
+
+.card.stacked:hover {
+    transform: translateZ(calc(-7px * var(--depth))) scale(calc(1 - 0.035 * var(--depth))) translateY(-10px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12); /* Slightly stronger shadow on hover */
+}
+
+.card-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transition: transform 0.6s;
+    transform-style: preserve-3d; /* Preserve 3D for flipping */
+}
+
+.card.flipped .card-inner {
+    transform: rotateY(180deg);
+}
+
+.card-front, .card-back {
+    position: absolute;
+    width: 100%;
+    backface-visibility: hidden;
+    background: #fff;
+    padding: 20px;
+    box-sizing: border-box;
+    border: 1px solid #ddd;
+    border-radius: 16px;
+}
+
+.card-front {
+    transform: rotateY(0deg);
+}
+
+.card-back {
+    transform: rotateY(180deg);
+}
+.article-date {
+    position: absolute;
+    bottom: 5px;
+    right: 10px;
+    font-size: 0.75em;
+    color: #bbb;
+    font-weight: normal;
+}
+.card-title-container {
+    padding: 10px;
+    background: #e9ecef;
+    border-bottom: 1px solid #ddd;
+    position: relative;
+}
+.card-title {
+    margin: 0;
+    font-size: 1.2em;
+    color: #333;
+}
+.card-content {
+    padding: 15px;
+    font-size: 1em;
+    line-height: 1.5;
+    color: #555;
+}
+.quotes-section {
+    display: none;
+    margin-top: 15px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+.card-back.show-quotes .quotes-section {
+    display: block;
+}
+.quotes-section ul {
+    margin: 0;
+    padding-left: 20px;
+    list-style-type: disc;
+}
+.quotes-section li {
+    margin: 5px 0;
+    font-style: italic;
+    color: #666;
+}
+.fp-title {
+    background-color: #ffcccc; /* Light pastel red */
+}
+.fa-title {
+    background-color: #cceeff; /* Light pastel blue */
+}
+.card-back .card-content p {
+    white-space: pre-wrap;
+}
+
+.article-link {
+    text-align: right;
+    margin-top: 15px;
+}
+
+.article-link a {
+    color: #bbb;
+    text-decoration: none;
+    font-size: 0.9em;
+}
+
+.article-link a:hover {
+    text-decoration: underline;
+}
+##### END FILE: /home/aabecassis/Projects/fpfa_summary/static/styles.css #####
+
+
+
+##### START FILE: /home/aabecassis/Projects/fpfa_summary/templates/index.html #####
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Latest Summaries</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <div class="deck">
+    {% for article in articles %}
+      <div class="card" data-state="0">
+        <div class="card-inner">
+          <!-- Front of the card -->
+          <div class="card-front">
+            <div class="card-title-container {{ 'fp-title' if article.source == 'Foreign Policy' else 'fa-title' }}">
+              <h2 class="card-title">{{ article.title }}</h2>
+              <p class="article-source">{{ article.source }} — {{ article.author }}</p>
+              <span class="article-date">{% set month_map = {
+                '01': 'January',
+                '02': 'February',
+                '03': 'March',
+                '04': 'April',
+                '05': 'May',
+                '06': 'June',
+                '07': 'July',
+                '08': 'August',
+                '09': 'September',
+                '10': 'October',
+                '11': 'November',
+                '12': 'December'
+              } %}
+              {% set date_text = article.date_added.split(' ')[0] %}
+              {% set parts = date_text.split('-') %}
+              {{ month_map[parts[1]] }} {{ parts[2].lstrip('0') }}</span>
+            </div>
+            <div class="card-content">
+              <p>{{ article.core_thesis }}</p>
+            </div>
+          </div>
+          <!-- Back of the card -->
+          <div class="card-back">
+            <div class="card-title-container {{ 'fp-title' if article.source == 'Foreign Policy' else 'fa-title' }}">
+              <h2 class="card-title">{{ article.title }}</h2>
+              <p class="article-source">{{ article.source }} — {{ article.author }}</p>
+              <span class="article-date">{% set month_map = {
+                '01': 'January',
+                '02': 'February',
+                '03': 'March',
+                '04': 'April',
+                '05': 'May',
+                '06': 'June',
+                '07': 'July',
+                '08': 'August',
+                '09': 'September',
+                '10': 'October',
+                '11': 'November',
+                '12': 'December'
+              } %}
+              {% set date_text = article.date_added.split(' ')[0] %}
+              {% set parts = date_text.split('-') %}
+              {{ month_map[parts[1]] }} {{ parts[2].lstrip('0') }}</span>
+            </div>
+            <div class="card-content">
+              <p>{{ article.detailed_abstract }}</p>
+              <div class="quotes-section">
+                <ul>
+                  {% for quote in article.supporting_data_quotes.split('*') %}
+                      {% if quote.strip() %}
+                          <li>{{ quote.strip() }}</li>
+                      {% endif %}
+                  {% endfor %}
+                </ul>
+              </div>
+              <div class="article-link">
+                <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer">read on {{ 'foreignpolicy.com' if article.source == 'Foreign Policy' else 'foreignaffairs.com' }}</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
+
+##### END FILE: /home/aabecassis/Projects/fpfa_summary/templates/index.html #####
+
+

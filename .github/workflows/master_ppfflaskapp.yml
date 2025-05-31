@@ -31,6 +31,10 @@ jobs:
       
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      # NEW – download the headless Chromium bundle and system libs
+      - name: Install Playwright browsers
+        run: python -m playwright install --with-deps chromium
         
       # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
 
