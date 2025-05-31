@@ -4,14 +4,18 @@ def test_with_selenium():
         import pickle
         import os
         import time
+        from webdriver_manager.chrome import ChromeDriverManager
         options = uc.ChromeOptions()
-        # options.add_argument("--headless")  # Disable headless for manual CAPTCHA
+        options.binary_location = "/usr/bin/chromium-browser"
+        # Enable headless mode for cloud environment
+        options.add_argument("--headless")
         options.add_argument("--disable-gpu")
         options.add_argument("--no-sandbox")
-        # Open browser in a small window and off-screen if possible
+        options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
+        # Open browser in a small window
         options.add_argument("--window-size=400,300")
-        options.add_argument("--window-position=2000,0")  # Move window off main screen if supported
-        driver = uc.Chrome(options=options, driver_executable_path="/home/aabecassis/chromedriver")
+        # Use ChromeDriver from PATH instead of hardcoded location
+        driver = uc.Chrome(options=options, driver_executable_path=ChromeDriverManager().install())
         url = "https://www.foreignaffairs.com/most-recent"
         cookies_file = "cookies.pkl"
         # If cookies file exists, load cookies before visiting the page
@@ -151,12 +155,17 @@ def extract_latest_article_urls(num_links_to_retrieve=3):
         import time
         from bs4 import BeautifulSoup
         options = uc.ChromeOptions()
-        # options.add_argument("--headless")  # Disable headless for manual CAPTCHA
+        options.binary_location = "/usr/bin/chromium-browser"
+        # Enable headless mode for cloud environment
+        options.add_argument("--headless")
         options.add_argument("--disable-gpu")
         options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
+        # Open browser in a small window
         options.add_argument("--window-size=400,300")
-        options.add_argument("--window-position=2000,0")
-        driver = uc.Chrome(options=options, driver_executable_path="/home/aabecassis/chromedriver")
+        # Use ChromeDriver from PATH instead of hardcoded location
+        from webdriver_manager.chrome import ChromeDriverManager
+        driver = uc.Chrome(options=options, driver_executable_path=ChromeDriverManager().install())
         url = "https://www.foreignaffairs.com/most-recent"
         cookies_file = "cookies.pkl"
         # If cookies file exists, load cookies before visiting the page
@@ -235,12 +244,17 @@ def extract_foreign_affairs_article(url):
         import time
         from bs4 import BeautifulSoup
         options = uc.ChromeOptions()
-        # options.add_argument("--headless")  # Disable headless for manual CAPTCHA
+        options.binary_location = "/usr/bin/chromium-browser"
+        # Enable headless mode for cloud environment
+        options.add_argument("--headless")
         options.add_argument("--disable-gpu")
         options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
+        # Open browser in a small window
         options.add_argument("--window-size=400,300")
-        options.add_argument("--window-position=2000,0")
-        driver = uc.Chrome(options=options, driver_executable_path="/home/aabecassis/chromedriver")
+        # Use ChromeDriver from PATH instead of hardcoded location
+        from webdriver_manager.chrome import ChromeDriverManager
+        driver = uc.Chrome(options=options, driver_executable_path=ChromeDriverManager().install())
         cookies_file = "cookies.pkl"
         # If cookies file exists, load cookies before visiting the page
         if os.path.exists(cookies_file):
