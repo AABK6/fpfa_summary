@@ -222,7 +222,7 @@ Title: {article['title']}
 Author: {article['author']}
 Text: {article['text']}
 """
-    return client.models.generate_content(model="gemini-2.0-flash-thinking-exp-01-21", contents=prompt).text.strip()
+    return client.models.generate_content(model="gemini-2.5-flash-preview-05-20", contents=prompt).text.strip()
 
 
 def generate_supporting_data_quotes(client, article):
@@ -232,7 +232,7 @@ Title: {article['title']}
 Author: {article['author']}
 Text: {article['text']}
 """
-    return client.models.generate_content(model="gemini-2.0-flash-thinking-exp-01-21", contents=prompt).text.strip()
+    return client.models.generate_content(model="gemini-2.5-flash-preview-05-20", contents=prompt).text.strip()
 
 
 # --------------------------------------------------------------------------------------

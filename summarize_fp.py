@@ -224,7 +224,7 @@ def generate_detailed_abstract(client: genai.Client, article: dict) -> str:
     """
     try:
         response = client.models.generate_content(
-            model='gemini-2.0-flash-thinking-exp-01-21',
+            model='gemini-2.5-flash-preview-05-20',
             contents=prompt
         )
         return response.text.strip()
@@ -250,7 +250,7 @@ def generate_supporting_data_quotes(client: genai.Client, article: dict) -> str:
     """
     try:
         response = client.models.generate_content(
-            model='gemini-2.0-flash-thinking-exp-01-21',
+            model='gemini-2.5-flash-preview-05-20',
             contents=prompt
         )
         return response.text.strip()
