@@ -1,6 +1,20 @@
 import requests
 from bs4 import BeautifulSoup
 import time
+import pytest
+
+
+@pytest.fixture
+def headers():
+    return {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    }
+
+
+@pytest.fixture
+def cookies():
+    return {}
 
 def test_with_headers(headers):
     url = "https://www.foreignaffairs.com/most-recent"
@@ -126,3 +140,4 @@ if __name__ == "__main__":
     test_with_cookies(headers3, cookies)
     print("\nTest 5: Selenium headless browser")
     test_with_selenium()
+
