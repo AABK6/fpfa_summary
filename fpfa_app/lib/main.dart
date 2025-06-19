@@ -178,6 +178,7 @@ class _HomePageState extends State<HomePage> {
 
   List<Article> articles = [];
   bool loading = true;
+  String error = '';
 
   @override
   void initState() {
@@ -199,15 +200,20 @@ class _HomePageState extends State<HomePage> {
         setState(() {
           articles = data.map((e) => Article.fromJson(e)).toList();
           loading = false;
+          error = '';
         });
       } else {
+        debugPrint('Failed to load articles: ${response.statusCode}');
         setState(() {
           loading = false;
+          error = 'Failed to load articles';
         });
       }
     } catch (e) {
+      debugPrint('Error loading articles: $e');
       setState(() {
         loading = false;
+        error = 'Failed to load articles';
       });
     }
   }
@@ -234,7 +240,7 @@ class _HomePageState extends State<HomePage> {
           child: loading
               ? const CircularProgressIndicator()
               : articles.isEmpty
-                  ? const Text('No articles found')
+                  ? Text(error.isEmpty ? 'No articles found' : error)
                   : Deck(key: _deckKey, articles: articles),
         ),
       ),
