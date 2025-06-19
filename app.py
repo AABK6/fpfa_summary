@@ -1,4 +1,4 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, jsonify
 import sqlite3
 
 app = Flask(__name__)
@@ -47,6 +47,13 @@ def home():
     """
     articles = get_latest_articles(limit=20)
     return render_template('index.html', articles=articles)
+
+
+@app.route('/api/articles')
+def api_articles():
+    """Return latest articles in JSON format."""
+    articles = get_latest_articles(limit=20)
+    return jsonify(articles)
 
 if __name__ == "__main__":
     app.run(debug=True)
