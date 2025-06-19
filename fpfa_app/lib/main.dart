@@ -2,6 +2,8 @@ import "dart:math";
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 
 void main() {
   runApp(const MyApp());
@@ -176,6 +178,7 @@ class _HomePageState extends State<HomePage> {
 
   List<Article> articles = [];
   bool loading = true;
+  String error = '';
 
   @override
   void initState() {
@@ -185,23 +188,32 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _loadArticles() async {
     try {
+      final baseUrl = (!kIsWeb &&
+              defaultTargetPlatform == TargetPlatform.android)
+          ? 'http://10.0.2.2:5000'
+          : 'http://localhost:5000';
       final response = await http.get(
-        Uri.parse('http://localhost:5000/api/articles'),
+        Uri.parse('$baseUrl/api/articles'),
       );
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         setState(() {
           articles = data.map((e) => Article.fromJson(e)).toList();
           loading = false;
+          error = '';
         });
       } else {
+        debugPrint('Failed to load articles: ${response.statusCode}');
         setState(() {
           loading = false;
+          error = 'Failed to load articles';
         });
       }
     } catch (e) {
+      debugPrint('Error loading articles: $e');
       setState(() {
         loading = false;
+        error = 'Failed to load articles';
       });
     }
   }
@@ -227,7 +239,9 @@ class _HomePageState extends State<HomePage> {
         child: Center(
           child: loading
               ? const CircularProgressIndicator()
-              : Deck(key: _deckKey, articles: articles),
+              : articles.isEmpty
+                  ? Text(error.isEmpty ? 'No articles found' : error)
+                  : Deck(key: _deckKey, articles: articles),
         ),
       ),
     );
