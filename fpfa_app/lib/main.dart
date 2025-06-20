@@ -164,17 +164,17 @@ class _DeckState extends State<Deck> {
         width: 600,
         height: MediaQuery.of(context).size.height * 0.8,
         child: Stack(
-          alignment: Alignment.topCenter,
+          alignment: Alignment.bottomCenter,
           children: List.generate(total, (i) {
             final depth = (i - _offset);
             final state = _states[i];
-            final top = depth * 40.0;
-            final scale = (1 - depth * 0.05).clamp(0.8, 1.0);
-            if (top > MediaQuery.of(context).size.height || top < -200) {
+            final bottom = depth * 40.0;
+            final scale = (1 - depth * 0.05).clamp(0.7, 1.0);
+            if (bottom > MediaQuery.of(context).size.height || bottom < -200) {
               return const SizedBox.shrink();
             }
             return Positioned(
-              top: top,
+              bottom: bottom,
               child: AnimatedScale(
                 duration: const Duration(milliseconds: 300),
                 scale: scale,
