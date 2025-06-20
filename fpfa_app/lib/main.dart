@@ -188,10 +188,12 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _loadArticles() async {
     try {
-      final baseUrl = (!kIsWeb &&
+      final defaultUrl = (!kIsWeb &&
               defaultTargetPlatform == TargetPlatform.android)
           ? 'http://10.0.2.2:5000'
           : 'http://localhost:5000';
+      const envUrl = String.fromEnvironment('API_BASE_URL');
+      final baseUrl = envUrl.isNotEmpty ? envUrl : defaultUrl;
       final response = await http.get(
         Uri.parse('$baseUrl/api/articles'),
       );
