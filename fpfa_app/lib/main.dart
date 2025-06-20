@@ -122,21 +122,17 @@ class _DeckState extends State<Deck> {
     setState(() {
       final current = _states[index];
       if (current == CardState.stacked) {
-        for (int i = 0; i < _states.length; i++) {
-          _states[i] = CardState.stacked;
-        }
-        _states[index] = CardState.front;
-        _offset = index.toDouble();
         _focusedIndex = index;
+        _states[index] = CardState.front;
       } else if (current == CardState.front) {
+        _focusedIndex = index;
         _states[index] = CardState.back;
-        _focusedIndex = index;
       } else if (current == CardState.back) {
+        _focusedIndex = index;
         _states[index] = CardState.quotes;
-        _focusedIndex = index;
       } else if (current == CardState.quotes) {
-        _states[index] = CardState.front;
         _focusedIndex = index;
+        _states[index] = CardState.front;
       }
     });
   }
@@ -165,27 +161,34 @@ class _DeckState extends State<Deck> {
         height: MediaQuery.of(context).size.height * 0.8,
         child: Stack(
           alignment: Alignment.bottomCenter,
-          children: List.generate(total, (i) {
-            final depth = (i - _offset);
-            final state = _states[i];
-            final bottom = depth * 40.0;
-            final scale = (1 - depth * 0.05).clamp(0.7, 1.0);
-            if (bottom > MediaQuery.of(context).size.height || bottom < -200) {
-              return const SizedBox.shrink();
+          children: () {
+            final indices = List<int>.generate(total, (i) => total - 1 - i);
+            if (_focusedIndex != null && indices.contains(_focusedIndex)) {
+              indices.remove(_focusedIndex);
+              indices.add(_focusedIndex!);
             }
-            return Positioned(
-              bottom: bottom,
-              child: AnimatedScale(
-                duration: const Duration(milliseconds: 300),
-                scale: scale,
-                child: ArticleCard(
-                  article: widget.articles[i],
-                  state: state,
-                  onTap: () => _onCardTap(i),
+            return indices.map((i) {
+              final depth = (i - _offset);
+              final state = _states[i];
+              final bottom = depth * 40.0;
+              final scale = (1 - depth * 0.04).clamp(0.3, 1.0);
+              if (bottom > MediaQuery.of(context).size.height || bottom < -300) {
+                return const SizedBox.shrink();
+              }
+              return Positioned(
+                bottom: bottom,
+                child: AnimatedScale(
+                  duration: const Duration(milliseconds: 300),
+                  scale: scale,
+                  child: ArticleCard(
+                    article: widget.articles[i],
+                    state: state,
+                    onTap: () => _onCardTap(i),
+                  ),
                 ),
-              ),
-            );
-          }),
+              );
+            }).toList();
+          }(),
         ),
       ),
     );
@@ -363,7 +366,9 @@ class _ArticleCardState extends State<ArticleCard> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         margin: const EdgeInsets.only(bottom: 20),
+        height: isStacked ? 60.0 : null,
         constraints: BoxConstraints(maxHeight: maxHeight, maxWidth: 600),
+        clipBehavior: Clip.hardEdge,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
