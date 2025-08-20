@@ -9,35 +9,62 @@ on:
   workflow_dispatch:
 
 jobs:
-  run-scripts:
+  run-pipeline:
     runs-on: ubuntu-latest
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           persist-credentials: true
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.12'
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install -r requirements.txt
 
-      - name: Install Playwright browsers
-        run: python -m playwright install --with-deps chromium
-
-      - name: Run first script with argument
-        run: python summarize_fa_hardened.py 7
+      - name: Run Foreign Affairs pipeline
+        run: python -m fpfa.cli run --sources fa --limit 7 --verbose
         continue-on-error: true
 
-      - name: Run second script with argument
-        run: python summarize_fp.py 7
+      - name: Run Foreign Policy pipeline
+        run: python -m fpfa.cli run --sources fp --limit 7 --verbose
         continue-on-error: true
+
+      - name: Check if quotes JSON migration is needed
+        id: check_migration
+        run: |
+          python - << 'PY'
+          import os, sqlite3
+          db = 'articles.db'
+          needed = False
+          if os.path.exists(db):
+              conn = sqlite3.connect(db)
+              try:
+                  cur = conn.cursor()
+                  cur.execute("PRAGMA table_info(articles)")
+                  cols = [r[1] for r in cur.fetchall()]
+                  if 'quotes_json' not in cols:
+                      needed = True
+                  else:
+                      cur.execute("SELECT COUNT(*) FROM articles WHERE (quotes_json IS NULL OR quotes_json='') AND supporting_data_quotes IS NOT NULL AND supporting_data_quotes<>''")
+                      n = cur.fetchone()[0]
+                      needed = n > 0
+              finally:
+                  conn.close()
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"needed={'true' if needed else 'false'}\n")
+          PY
+
+      - name: Migrate quotes JSON
+        if: steps.check_migration.outputs.needed == 'true'
+        run: python -m fpfa.cli migrate quotes-json
 
       - name: Configure Git
         run: |
