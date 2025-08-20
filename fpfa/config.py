@@ -21,7 +21,7 @@ def load_config() -> Config:
     # Read environment at call-time to support tests changing FPFA_DB_PATH dynamically.
     return Config(
         db_path=os.environ.get("FPFA_DB_PATH", _default_db_path()),
-        model_core=os.environ.get("FPFA_MODEL_CORE", "gemini-2.0-flash"),
-        model_detail=os.environ.get("FPFA_MODEL_DETAIL", "gemini-2.5-flash-preview-05-20"),
-        model_quotes=os.environ.get("FPFA_MODEL_QUOTES", "gemini-2.5-flash-preview-05-20"),
+        model_core=os.environ.get("FPFA_MODEL_CORE", "gemini-2.5-flash-lite"),
+        model_detail=os.environ.get("FPFA_MODEL_DETAIL", "gemini-2.5-flash"),
+        model_quotes=os.environ.get("FPFA_MODEL_QUOTES", "gemini-2.5-flash"),
     )
