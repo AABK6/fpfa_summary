@@ -260,95 +260,18 @@ def generate_supporting_data_quotes(client: genai.Client, article: dict) -> str:
 
 
 def main():
-    if len(sys.argv) < 2:
-        num_articles_to_summarize = 10
-    else:
-        try:
-            num_articles_to_summarize = int(sys.argv[1])
-            if num_articles_to_summarize <= 0:
-                print("Please provide a positive number of articles to summarize.")
-                sys.exit(1)
-        except ValueError:
-            print("Usage: python summarize_fp.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]")
-            print("       Please provide a valid integer for the number of articles.")
-            sys.exit(1)
-
-    article_urls = scrape_foreignpolicy_article_list(num_articles_to_summarize)
-
-    if not article_urls:
-        print("No article URLs found. Exiting.")
+    # Thin wrapper delegating to the new pipeline
+    try:
+        limit = int(sys.argv[1]) if len(sys.argv) > 1 else 10
+    except ValueError:
+        print("Usage: python summarize_fp.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]")
         sys.exit(1)
 
-    # === Initialize Database (MINIMAL ADDITION) ===
-    conn = init_db("articles.db")
+    from fpfa.pipeline import run_pipeline
+    from fpfa.summarizers.gemini import GeminiSummaryGenerator
 
-    articles_data = []
-    for url in article_urls:
-        print(f"Scraping article from: {url}")
-        article_data = scrape_foreignpolicy_article(url)
-        if article_data:
-            # Attach the URL to the data so we can store and check it
-            article_data["url"] = url
-            articles_data.append(article_data)
-        else:
-            print(f"Failed to scrape article from: {url}")
-
-    if not articles_data:
-        print("No article data scraped successfully. Exiting.")
-        sys.exit(1)
-
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("Error: GEMINI_API_KEY environment variable not set.")
-        print("Please set your Gemini API key as an environment variable named GEMINI_API_KEY.")
-        sys.exit(1)
-
-    client = create_client(api_key)
-
-    print("\n--- Article Summaries ---")
-    for article in articles_data:
-        # Check if article already in DB
-        existing_record = get_article_by_url(conn, article["url"])
-        if existing_record:
-            # If found in DB, just print what's stored
-            db_title, db_author, db_article_text, db_core_thesis, db_detailed_abstract, db_supporting_data_quotes = existing_record
-            print(f"\n--- ARTICLE (FROM DB): {db_title} by {db_author} ---")
-            print("\n=== CORE THESIS ===")
-            print(db_core_thesis)
-            print("\n=== DETAILED ABSTRACT ===")
-            print(db_detailed_abstract)
-            print("\n=== SUPPORTING DATA AND QUOTES ===")
-            print(db_supporting_data_quotes)
-            print("-" * 50)
-        else:
-            # Summarize and insert
-            print(f"\n--- ARTICLE: {article['title']} by {article['author']} ---")
-            core_thesis = generate_core_thesis(client, article)
-            detailed_abstract = generate_detailed_abstract(client, article)
-            supporting_data_quotes = generate_supporting_data_quotes(client, article)
-
-            print("\n=== CORE THESIS ===")
-            print(core_thesis)
-            print("\n=== DETAILED ABSTRACT ===")
-            print(detailed_abstract)
-            print("\n=== SUPPORTING DATA AND QUOTES ===")
-            print(supporting_data_quotes)
-            print("-" * 50)
-
-            # Store in DB
-            insert_article(
-                conn,
-                source="Foreign Policy",
-                url=article["url"],
-                title=article["title"],
-                author=article["author"],
-                article_text=article["text"],  # Storing full text
-                core_thesis=core_thesis,
-                detailed_abstract=detailed_abstract,
-                supporting_data_quotes=supporting_data_quotes
-            )
-
-    conn.close()
+    inserted = run_pipeline(["fp"], limit=limit, summarizer=GeminiSummaryGenerator())
+    print(f"Inserted {inserted} Foreign Policy articles.")
 
 if __name__ == "__main__":
     main()
