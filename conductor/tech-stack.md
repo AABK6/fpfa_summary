@@ -24,7 +24,8 @@
 ## Target Stack (Modernization)
 
 **Backend:**
-- To Be Determined. A comprehensive code review and options analysis will be conducted to decide between upgrading the existing Flask stack or migrating to a modern alternative like FastAPI or others.
+- **FastAPI:** Selected to replace Flask for improved performance, async support, and automatic documentation.
+- **Pydantic:** For robust data validation and schema definition.
 
 **Frontend:**
-- To Be Determined. The goal is to select the most compatible and efficient platform for supporting Android, iOS, and Web. Flutter is the current incumbent, but this will be re-evaluated.
+- **Flutter (Refactored):** Retained as the frontend framework but with a modernized architecture (Clean Architecture, Provider/Riverpod for state management).
