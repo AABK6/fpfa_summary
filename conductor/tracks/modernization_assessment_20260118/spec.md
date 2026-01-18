@@ -9,6 +9,8 @@ This track aims to assess the current state of the "Foreign Policy & Foreign Aff
 3.  **Modernization Roadmap:** Evaluate the benefits and risks of migrating to modern alternatives (e.g., FastAPI for backend).
 4.  **Security Hardening:** Update critical dependencies to resolve known vulnerabilities.
 5.  **Stabilization:** Ensure the application remains functional and stable across Android, iOS, and Web after updates.
+6.  **Context7 Integration:** Use Context7 to retrieve the most up-to-date documentation for libraries and dependencies.
+7.  **Comprehensive Testing:** Verify and test all fetching and summarizing features to ensure correctness.
 
 ## Success Criteria
 -   Comprehensive report on current dependency health.
@@ -16,6 +18,7 @@ This track aims to assess the current state of the "Foreign Policy & Foreign Aff
 -   Documented decision on backend modernization (FastAPI vs. Flask upgrade).
 -   Documented decision on frontend modernization (Flutter vs. alternatives).
 -   Zero downtime for the live application during the update process.
+-   All fetching and summarizing workflows are covered by tests.
 
 ## Constraints
 -   All modernization work must be performed on a separate Git branch.
