@@ -13,11 +13,11 @@
 - [x] Task: Implement Data Access Layer 9fbe419
     - [x] Refactor `get_latest_articles` into a standalone service/repository
     - [x] Write tests for data retrieval logic using a mock/temporary database
-- [ ] Task: Implement API Routes (TDD)
-    - [ ] **Red:** Write failing integration tests for `/api/articles`
-    - [ ] **Green:** Implement the `/api/articles` endpoint in FastAPI
-    - [ ] **Red:** Write failing test for the root `/` HTML route
-    - [ ] **Green:** Implement the Jinja2 template rendering for the root route
+- [x] Task: Implement API Routes (TDD) 862a915
+    - [x] **Red:** Write failing integration tests for `/api/articles`
+    - [x] **Green:** Implement the `/api/articles` endpoint in FastAPI
+    - [x] **Red:** Write failing test for the root `/` HTML route
+    - [x] **Green:** Implement the Jinja2 template rendering for the root route
 - [ ] Task: Implement Health and Documentation
     - [ ] Implement the `/health` endpoint
     - [ ] Configure custom Swagger UI metadata and ReDoc
