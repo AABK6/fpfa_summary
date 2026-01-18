@@ -53,10 +53,10 @@
 - [x] Task: End-to-End (E2E) Testing e6c1cad
     - [x] Setup `flutter_driver` or `integration_test` package
     - [x] Implement E2E tests verifying the full flow: API call -> UI Render -> Offline Cache
-- [ ] Task: CI/CD Pipeline Update
-    - [ ] Update `.github/workflows/` to include Python dependency caching for FastAPI
-    - [ ] Add steps for FastAPI linting and unit tests
-    - [ ] Update Flutter workflow to include the new architectural tests
+- [x] Task: CI/CD Pipeline Update 57ea664
+    - [x] Update `.github/workflows/` to include Python dependency caching for FastAPI
+    - [x] Add steps for FastAPI linting and unit tests
+    - [x] Update Flutter workflow to include the new architectural tests
 - [ ] Task: Performance Benchmarking
     - [ ] Run load tests (e.g., using `locust` or simple scripts) against both Flask and FastAPI
     - [ ] Document findings in the final report
