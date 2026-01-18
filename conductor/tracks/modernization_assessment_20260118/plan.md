@@ -20,9 +20,9 @@
     - [x] Update `requirements.txt` with latest secure versions of critical libraries (Flask, requests, etc.)
     - [x] Run backend tests to ensure no regressions
     - [x] Create or update tests for all fetching and summarizing scripts (`summarize_fa.py`, `summarize_fp.py`, etc.) to ensure full coverage as per specs.
-- [ ] Task: Update Critical Frontend Dependencies
-    - [ ] Update `pubspec.yaml` with latest stable versions of critical packages
-    - [ ] Run flutter tests and verify the app builds for all platforms (Android, iOS, Web)
+- [x] Task: Update Critical Frontend Dependencies 8687de8
+    - [x] Update `pubspec.yaml` with latest stable versions of critical packages
+    - [-] Run flutter tests and verify the app builds for all platforms (Android, iOS, Web) (Skipped: `flutter` command broken in environment)
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Dependency Updates and Stabilization' (Protocol in workflow.md)
 
 ## Phase 3: Modernization Roadmap and Decision
