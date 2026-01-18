@@ -26,7 +26,7 @@ from typing import List, Dict
 
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeoutError
-from playwright_stealth import stealth_sync  # pip install playwright-stealth
+from playwright_stealth import stealth  # pip install playwright-stealth
 from google import genai  #  → works exactly as in the original script
 
 # --------------------------------------------------------------------------------------
@@ -131,8 +131,8 @@ def fetch_html(url: str, max_retries: int = MAX_RETRIES) -> str | None:
             args=["--no-sandbox", "--disable-dev-shm-usage"],
         )
         context = browser.new_context(user_agent=USER_AGENT, viewport={"width": 1280, "height": 800})
-        stealth_sync(context)  # ← zero‑cost, hides playwright fingerprints
         page = context.new_page()
+        stealth(page)  # ← zero‑cost, hides playwright fingerprints
 
         for attempt in range(1, max_retries + 1):
             try:
@@ -177,9 +177,14 @@ def extract_foreign_affairs_article(url: str) -> Dict[str, str] | None:
         return None
     soup = BeautifulSoup(html, "html.parser")
 
-    title = (soup.find("h1", class_="topper__title") or {}).get_text(strip=True) if soup else "Title Not Found"
-    subtitle = (soup.find("h2", class_="topper__subtitle") or {}).get_text(strip=True) if soup else ""
-    author = (soup.find("h3", class_="topper__byline") or {}).get_text(strip=True) if soup else "Author Not Found"
+    title_tag = soup.find("h1", class_="topper__title")
+    title = title_tag.get_text(strip=True) if title_tag else "Title Not Found"
+
+    subtitle_tag = soup.find("h2", class_="topper__subtitle")
+    subtitle = subtitle_tag.get_text(strip=True) if subtitle_tag else ""
+
+    author_tag = soup.find("h3", class_="topper__byline")
+    author = author_tag.get_text(strip=True) if author_tag else "Author Not Found"
 
     article_body = soup.find("article") or soup.find("div", class_="article-body") or soup.find("main")
     if not article_body:

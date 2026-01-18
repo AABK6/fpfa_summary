@@ -1,92 +1,46 @@
-def test_with_selenium():
-    try:
-        import undetected_chromedriver as uc
-        import pickle
-        import os
-        import time
-        from webdriver_manager.chrome import ChromeDriverManager
-        options = uc.ChromeOptions()
-        options.binary_location = "/usr/bin/chromium-browser"
-        # Enable headless mode for cloud environment
-        options.add_argument("--headless")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
-        # Open browser in a small window
-        options.add_argument("--window-size=400,300")
-        # Use ChromeDriver from PATH instead of hardcoded location
-        driver = uc.Chrome(options=options, driver_executable_path=ChromeDriverManager().install())
-        url = "https://www.foreignaffairs.com/most-recent"
-        cookies_file = "cookies.pkl"
-        # If cookies file exists, load cookies before visiting the page
-        if os.path.exists(cookies_file):
-            driver.get("https://www.foreignaffairs.com/")
-            with open(cookies_file, "rb") as f:
-                cookies = pickle.load(f)
-            for cookie in cookies:
-                # Selenium expects expiry as int, not float
-                if isinstance(cookie.get('expiry', None), float):
-                    cookie['expiry'] = int(cookie['expiry'])
-                try:
-                    driver.add_cookie(cookie)
-                except Exception as e:
-                    print(f"Cookie import error: {e}")
-            driver.get(url)
-            time.sleep(3)
-            html = driver.page_source
-            print("Selenium page source (first 200 chars):")
-            print(html[:200])
-            # Auto-delete cookies and retry if Cloudflare block detected
-            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
-                print("Cloudflare block detected. Deleting cookies and retrying...")
-                driver.quit()
-                os.remove(cookies_file)
-                # Recursively retry
-                test_with_selenium()
-                return
-        else:
-            print("No cookies found. Loading page and waiting 10 seconds for login/session cookies to be set...")
-            driver.get(url)
-            time.sleep(10)  # Wait for login/session cookies to be set
-            # Save cookies after waiting
-            cookies = driver.get_cookies()
-            with open(cookies_file, "wb") as f:
-                pickle.dump(cookies, f)
-            print(f"Saved {len(cookies)} cookies to {cookies_file}. Re-run to use them automatically.")
-            html = driver.page_source
-            print("Selenium page source (first 200 chars):")
-            print(html[:200])
-            # Auto-delete cookies and retry if Cloudflare block detected
-            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
-                print("Cloudflare block detected. Deleting cookies and retrying...")
-                driver.quit()
-                os.remove(cookies_file)
-                # Recursively retry
-                test_with_selenium()
-                return
-        driver.quit()
-    except Exception as e:
-        print(f"Selenium Exception: {e}")
-import requests
-from bs4 import BeautifulSoup
-import re
-import sys
+#!/usr/bin/env python3
+"""
+Scrape the latest Foreign Affairs pieces, bypass the paywall,
+summarise them with Gemini, and cache everything in SQLite.
+
+The script auto‑detects your undetected‑chromedriver version
+and chooses the correct driver‑patching method, so it runs on
+both v2.x and v3.x without manual tweaks.
+"""
+
 import os
-from google import genai
-from google.genai import types
-
-# === DATABASE IMPORT (MINIMAL ADDITION) ===
+import sys
+import pickle
 import sqlite3
+import importlib
+from contextlib import contextmanager
+from pathlib import Path
+from typing import List, Dict, Optional
 
-def init_db(db_path="articles.db"):
-    """
-    Creates (if not exists) a table 'articles' for storing article data.
-    Includes a column 'article_text' to store the full text of the article.
-    The URL is declared UNIQUE to skip duplicates.
-    """
+# ───────────────────────── Selenium setup ────────────────────────────
+import undetected_chromedriver as uc
+from bs4 import BeautifulSoup
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+
+# ───────────────────────── Gemini SDK ────────────────────────────────
+from google import genai
+from google.genai import types  # noqa: F401  (imported for completeness)
+
+# ───────────────────────── Constants ─────────────────────────────────
+FA_BASE         = "https://www.foreignaffairs.com"
+FA_LATEST       = f"{FA_BASE}/most-recent"
+PAYWALL_PATTERN = "*/modules/custom/fa_paywall_js/js/paywall.js*"
+COOKIES_PATH    = Path("fa_cookies.pkl")
+DB_PATH         = Path("articles.db")
+MAX_CF_RETRIES  = 3
+
+# ───────────────────────── DB helpers ────────────────────────────────
+def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute('''
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS articles (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             source TEXT,
@@ -99,408 +53,277 @@ def init_db(db_path="articles.db"):
             supporting_data_quotes TEXT,
             date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    ''')
+        """
+    )
     conn.commit()
     return conn
 
-def insert_article(conn, source, url, title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes):
-    """
-    Inserts an article into the database table 'articles'.
-    Skips if the URL is already present (UNIQUE constraint).
-    """
+
+def insert_article(conn: sqlite3.Connection, **row):
+    keys = ", ".join(row.keys())
+    qmarks = ", ".join("?" for _ in row)
     try:
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO articles
-            (source, url, title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (source, url, title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes))
+        conn.execute(
+            f"INSERT INTO articles ({keys}) VALUES ({qmarks})", tuple(row.values())
+        )
         conn.commit()
-        print(f"Inserted article into DB: {title}")
     except sqlite3.IntegrityError:
-        pass  # We'll handle existing articles in the main() logic
+        pass  # already stored
 
-def get_article_by_url(conn, url):
+
+def fetch_article(conn: sqlite3.Connection, url: str):
+    return conn.execute("SELECT * FROM articles WHERE url = ?", (url,)).fetchone()
+
+
+# ───────────────────────── Driver patch helper ───────────────────────
+def _patched_driver_path() -> str:
     """
-    Returns (title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes) if present,
-    or None if not found.
+    Return a fully patched chromedriver path that works on both
+    undetected‑chromedriver v3.x (modern `install()`) and v2.x (legacy patcher).
     """
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes
-        FROM articles
-        WHERE url = ?
-    ''', (url,))
-    return cursor.fetchone()
+    uc_mod = importlib.reload(uc)  # ensure module fully initialised
 
-"""
-Usage:
-    python summarize_fp.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]
+    if hasattr(uc_mod, "install"):  # v3.x path
+        return uc_mod.install()
 
-Description:
-    - Scrapes article URLs from Foreign Affairs listing page.
-    - Extracts text content from each article.
-    - Summarizes each article using Gemini API, now with the EXACTLY CORRECT SDK imports.
-"""
+    # v2.x fallback
+    from undetected_chromedriver.patcher import Patcher
+    return Patcher().patch_exe()
 
 
-def extract_latest_article_urls(num_links_to_retrieve=3):
-    """
-    Extracts a specified number of latest article URLs (excluding podcasts) using Selenium for robust scraping.
-    """
+# ───────────────────────── Selenium context ──────────────────────────
+@contextmanager
+def selenium_session(headless: bool = True):
+    options = uc.ChromeOptions()
+    if headless:
+        options.add_argument("--headless=new")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=400,300")
+
+    driver = uc.Chrome(
+        options=options,
+        driver_executable_path=_patched_driver_path(),
+    )
+
+    # block FA paywall JS
+    driver.execute_cdp_cmd("Network.setBlockedURLs", {"urls": [PAYWALL_PATTERN]})
+    driver.execute_cdp_cmd("Network.enable", {})
+
     try:
-        import undetected_chromedriver as uc
-        import pickle
-        import os
-        import time
-        from bs4 import BeautifulSoup
-        options = uc.ChromeOptions()
-        options.binary_location = "/usr/bin/chromium-browser"
-        # Enable headless mode for cloud environment
-        options.add_argument("--headless")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
-        # Open browser in a small window
-        options.add_argument("--window-size=400,300")
-        # Use ChromeDriver from PATH instead of hardcoded location
-        from webdriver_manager.chrome import ChromeDriverManager
-        driver = uc.Chrome(options=options, driver_executable_path=ChromeDriverManager().install())
-        url = "https://www.foreignaffairs.com/most-recent"
-        cookies_file = "cookies.pkl"
-        # If cookies file exists, load cookies before visiting the page
-        if os.path.exists(cookies_file):
-            driver.get("https://www.foreignaffairs.com/")
-            with open(cookies_file, "rb") as f:
-                cookies = pickle.load(f)
-            for cookie in cookies:
-                if isinstance(cookie.get('expiry', None), float):
-                    cookie['expiry'] = int(cookie['expiry'])
-                try:
-                    driver.add_cookie(cookie)
-                except Exception as e:
-                    print(f"Cookie import error: {e}")
-            driver.get(url)
-            time.sleep(2)
-            html = driver.page_source
-            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
-                print("Cloudflare block detected. Deleting cookies and retrying...")
-                driver.quit()
-                os.remove(cookies_file)
-                # Recursively retry
-                return extract_latest_article_urls(num_links_to_retrieve)
-        else:
-            print("No cookies found. Loading page and waiting 10 seconds for login/session cookies to be set...")
-            driver.get(url)
-            time.sleep(3)
-            cookies = driver.get_cookies()
-            with open(cookies_file, "wb") as f:
-                pickle.dump(cookies, f)
-            html = driver.page_source
-            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
-                print("Cloudflare block detected. Deleting cookies and retrying...")
-                driver.quit()
-                os.remove(cookies_file)
-                return extract_latest_article_urls(num_links_to_retrieve)
+        yield driver
+    finally:
         driver.quit()
-        soup = BeautifulSoup(html, 'html.parser')
-        article_cards = soup.find_all('div', class_='card--large')
-        if not article_cards:
-            return None
-        article_urls = []
-        links_retrieved_count = 0
-        for card in article_cards:
-            if links_retrieved_count >= num_links_to_retrieve:
-                break
-            h3_link = card.find('h3', class_='body-m').find('a') if card.find('h3', class_='body-m') else None
-            if h3_link and h3_link.has_attr('href'):
-                extracted_url = "https://www.foreignaffairs.com" + h3_link['href']
-                if "podcasts" not in extracted_url.lower():
-                    article_urls.append(extracted_url)
-                    links_retrieved_count += 1
-                    continue
-            if links_retrieved_count >= num_links_to_retrieve:
-                break
-            h4_link = card.find('h4', class_='body-s').find('a') if card.find('h4', class_='body-s') else None
-            if h4_link and h4_link.has_attr('href'):
-                extracted_url = "https://www.foreignaffairs.com" + h4_link['href']
-                if "podcasts" not in extracted_url.lower():
-                    article_urls.append(extracted_url)
-                    links_retrieved_count += 1
-        return article_urls
-    except Exception as e:
-        print(f"Selenium Exception (URL extraction): {e}")
+
+
+# ───────────────────────── Cookie helpers ────────────────────────────
+def load_cookies(driver):
+    if COOKIES_PATH.exists():
+        driver.get(FA_BASE)  # must visit domain before adding cookies
+        with COOKIES_PATH.open("rb") as f:
+            for ck in pickle.load(f):
+                if isinstance(ck.get("expiry"), float):
+                    ck["expiry"] = int(ck["expiry"])
+                try:
+                    driver.add_cookie(ck)
+                except Exception:
+                    pass
+
+
+def save_cookies(driver):
+    COOKIES_PATH.write_bytes(pickle.dumps(driver.get_cookies()))
+
+
+# ───────────────────────── Scraping utilities ────────────────────────
+def _cloudflare_blocked(html: str) -> bool:
+    return "Attention Required" in html or "cf-chl" in html
+
+
+def _wait_for_article(driver):
+    WebDriverWait(driver, 15).until(
+        EC.presence_of_element_located((By.TAG_NAME, "article"))
+    )
+    # remove overlay & force text visible
+    driver.execute_script(
+        """
+        document.querySelectorAll(
+          '.paywall, .loading-indicator, .unlock-article-message__container'
+        ).forEach(el => el.remove());
+        document.querySelectorAll('.dropcap-paragraph')
+                .forEach(p => p.classList.add('loaded'));
+    """
+    )
+
+
+def get_latest_urls(driver, n: int) -> List[str]:
+    driver.get(FA_LATEST)
+    _wait_for_article(driver)
+    soup = BeautifulSoup(driver.page_source, "html.parser")
+
+    urls, seen = [], set()
+    for card in soup.select("div.card--large"):
+        if len(urls) >= n:
+            break
+        link_el = card.select_one("h3.body-m a, h4.body-s a")
+        if link_el and "podcasts" not in link_el["href"]:
+            full = FA_BASE + link_el["href"]
+            if full not in seen:
+                urls.append(full)
+                seen.add(full)
+    return urls
+
+
+def scrape_article(driver, url: str, retry: int = 0) -> Optional[Dict]:
+    if retry >= MAX_CF_RETRIES:
+        print(f"[!] Cloudflare keeps blocking after {MAX_CF_RETRIES} tries: {url}")
         return None
 
+    driver.get(url)
+    _wait_for_article(driver)
+    html = driver.page_source
+    if _cloudflare_blocked(html):
+        print("[!] Cloudflare block – clearing cookies & retrying…")
+        COOKIES_PATH.unlink(missing_ok=True)
+        load_cookies(driver)
+        return scrape_article(driver, url, retry + 1)
 
-def extract_foreign_affairs_article(url):
-    """
-    Extracts the title, author, and text content of a Foreign Affairs article using Selenium (bypassing 403s).
-    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    title_tag = soup.select_one("h1.topper__title")
+    author_tag = soup.select_one("h3.topper__byline")
+    subtitle_tag = soup.select_one("h2.topper__subtitle")
+
+    title = title_tag.get_text(strip=True) if title_tag else "Title Not Found"
+    author = author_tag.get_text(strip=True) if author_tag else "Author Not Found"
+    subtitle = subtitle_tag.get_text(strip=True) if subtitle_tag else ""
+
+    article_el = (
+        soup.select_one("article")
+        or soup.select_one("div.article-body")
+        or soup.select_one("div.Article__body")
+        or soup.select_one("main")
+    )
+
+    text = (
+        "\n\n".join(p.get_text(strip=True) for p in article_el.find_all("p"))
+        if article_el
+        else "Article Text Not Found"
+    )
+
+    return {
+        "url": url,
+        "title": title,
+        "author": author,
+        "subtitle": subtitle,
+        "text": text,
+    }
+
+
+# ───────────────────────── Gemini helpers ────────────────────────────
+def new_gemini_client() -> genai.Client:
+    key = os.getenv("GEMINI_API_KEY")
+    if not key:
+        sys.exit("⚠️  Set GEMINI_API_KEY environment variable first.")
+    return genai.Client(api_key=key)
+
+
+def _gemini(client, model: str, prompt: str) -> str:
     try:
-        import undetected_chromedriver as uc
-        import pickle
-        import os
-        import time
-        from bs4 import BeautifulSoup
-        options = uc.ChromeOptions()
-        options.binary_location = "/usr/bin/chromium-browser"
-        # Enable headless mode for cloud environment
-        options.add_argument("--headless")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
-        # Open browser in a small window
-        options.add_argument("--window-size=400,300")
-        # Use ChromeDriver from PATH instead of hardcoded location
-        from webdriver_manager.chrome import ChromeDriverManager
-        driver = uc.Chrome(options=options, driver_executable_path=ChromeDriverManager().install())
-        cookies_file = "cookies.pkl"
-        # If cookies file exists, load cookies before visiting the page
-        if os.path.exists(cookies_file):
-            driver.get("https://www.foreignaffairs.com/")
-            with open(cookies_file, "rb") as f:
-                cookies = pickle.load(f)
-            for cookie in cookies:
-                if isinstance(cookie.get('expiry', None), float):
-                    cookie['expiry'] = int(cookie['expiry'])
-                try:
-                    driver.add_cookie(cookie)
-                except Exception as e:
-                    print(f"Cookie import error: {e}")
-            driver.get(url)
-            time.sleep(3)
-            html = driver.page_source
-            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
-                print("Cloudflare block detected. Deleting cookies and retrying...")
-                driver.quit()
-                os.remove(cookies_file)
-                # Recursively retry
-                return extract_foreign_affairs_article(url)
-        else:
-            print("No cookies found. Loading page and waiting 10 seconds for login/session cookies to be set...")
-            driver.get(url)
-            time.sleep(10)
-            cookies = driver.get_cookies()
-            with open(cookies_file, "wb") as f:
-                pickle.dump(cookies, f)
-            html = driver.page_source
-            if ("Attention Required" in html or "cf-chl" in html) and os.path.exists(cookies_file):
-                print("Cloudflare block detected. Deleting cookies and retrying...")
-                driver.quit()
-                os.remove(cookies_file)
-                return extract_foreign_affairs_article(url)
-        driver.quit()
-        soup = BeautifulSoup(html, 'html.parser')
-        # Extract Title
-        title_element = soup.find('h1', class_='topper__title')
-        title = title_element.text.strip() if title_element else "Title Not Found"
-        # Extract Subtitle (optional, if you want to include it)
-        subtitle_element = soup.find('h2', class_='topper__subtitle')
-        subtitle = subtitle_element.text.strip() if subtitle_element else ""
-        # Extract Author
-        author_element = soup.find('h3', class_='topper__byline')
-        author = author_element.text.strip() if author_element else "Author Not Found"
-        # Extract Article Text
-        article_content = soup.find('article')
-        if not article_content:
-            article_content = soup.find('div', class_='article-body')
-        if not article_content:
-            article_content = soup.find('div', class_='Article__body')
-        if not article_content:
-            article_content = soup.find('main')
-        if not article_content:
-            article_text = "Article Text Not Found"
-        else:
-            paragraphs = article_content.find_all('p')
-            if not paragraphs:
-                paragraphs = article_content.find_all('div', class_='paragraph')
-            article_text_list = []
-            for p in paragraphs:
-                article_text_list.append(p.text.strip())
-            article_text = "\n\n".join(article_text_list)
-        return {
-            "title": title,
-            "subtitle": subtitle,
-            "author": author,
-            "text": article_text
-        }
+        return client.models.generate_content(model=model, contents=prompt).text.strip()
     except Exception as e:
-        print(f"Selenium Exception (article scraping): {e}")
-        return None
+        return f"⚠️ Generation failed: {e}"
 
-def create_client(api_key: str) -> genai.Client:
-    """
-    Creates a Gemini Pro API client using the 'google' SDK.
-    """
-    client = genai.Client(api_key=api_key)
-    return client
 
-def generate_core_thesis(client: genai.Client, article: dict) -> str:
-    """
-    Generates the Core Thesis in 1-2 sentences.
-    """
+def core_thesis(client, article) -> str:
     prompt = f"""
-    Task: Write 1-2 dense sentences capturing the main conclusion or central argument
-    of the above article, focusing only on the primary claim or takeaway without supporting details.
+Write 1–2 dense sentences that capture the central argument or main conclusion
+of this Foreign Affairs article (no supporting detail).
 
-    Title: {article['title']}
-    Author: {article['author']}
-    Text: {article['text']}
-    """
+Title: {article['title']}
+Author: {article['author']}
+Text: {article['text']}
+"""
+    return _gemini(client, "gemini-1.5-flash-latest", prompt)
 
-    try:
-        response = client.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=prompt
-        )
-        return response.text.strip()
-    except Exception as e:
-        print(f"Error generating core thesis: {e}")
-        return "Summary generation failed."
 
-def generate_detailed_abstract(client: genai.Client, article: dict) -> str:
-    """
-    Generates an abstract that expands on the core thesis.
-    """
+def detailed_abstract(client, article) -> str:
     prompt = f"""
-    Task: Provide two dense paragraphs summarizing the main arguments and points
-    of the article. Include essential background, the progression of ideas, and explain
-    any important concepts the article uses to develop its case.
-    Do not add anything else than the summary, and remove any unnecessary words.
+Summarise the article in **two concise paragraphs**:
+– first: outline essential background and framing;
+– second: trace the argument’s progression and main evidence.
+Remove all superfluous words.
 
-    Title: {article['title']}
-    Author: {article['author']}
-    Text: {article['text']}
-    """
-    try:
-        response = client.models.generate_content(
-            model='gemini-2.0-flash-thinking-exp-01-21',
-            contents=prompt
-        )
-        return response.text.strip()
-    except Exception as e:
-        print(f"Error generating detailed abstract: {e}")
-        return "Summary generation failed."
+Title: {article['title']}
+Author: {article['author']}
+Text: {article['text']}
+"""
+    return _gemini(client, "gemini-1.5-flash-latest", prompt)
 
-def generate_supporting_data_quotes(client: genai.Client, article: dict) -> str:
-    """
-    Highlights critical data points and direct quotes from the article.
-    """
+
+def supporting_data(client, article) -> str:
     prompt = f"""
-    Task: Extract and list:
-    - The most important factual data points or statistics from the article.
-    - 2-3 key direct quotes verbatim, capturing the article's ethos or perspective.
+Extract and list:
+• key factual data points / statistics;
+• 2‑3 direct quotes that embody the article’s voice.
 
-    Present them as bullet points or a short list, preserving the article's original style in the quotes. Do not add anything esle than the bullet points.
+Bullet‑point format only.
 
-    Title: {article['title']}
-    Author: {article['author']}
-    Text: {article['text']}
-    """
-    try:
-        response = client.models.generate_content(
-            model='gemini-2.0-flash-thinking-exp-01-21',
-            contents=prompt
-        )
-        return response.text.strip()
-    except Exception as e:
-        print(f"Error generating supporting data/quotes: {e}")
-        return "Summary generation failed."
+Title: {article['title']}
+Author: {article['author']}
+Text: {article['text']}
+"""
+    return _gemini(client, "gemini-1.5-flash-latest", prompt)
 
+
+# ───────────────────────── Main entry point ──────────────────────────
 def main():
-    if len(sys.argv) < 2:
-        num_articles_to_summarize = 3
-    else:
-        try:
-            num_articles_to_summarize = int(sys.argv[1])
-            if num_articles_to_summarize <= 0:
-                print("Please provide a positive number of articles to summarize.")
-                sys.exit(1)
-        except ValueError:
-            print("Usage: python summarize_fp.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]")
-            print("       Please provide a valid integer for the number of articles.")
-            sys.exit(1)
+    num_articles = int(sys.argv[1]) if len(sys.argv) > 1 else 3
+    conn = init_db()
+    gem = new_gemini_client()
 
-    article_urls = extract_latest_article_urls(num_articles_to_summarize)
+    with selenium_session() as driver:
+        load_cookies(driver)
 
-    if not article_urls:
-        print("No article URLs found. Exiting.")
-        sys.exit(1)
+        urls = get_latest_urls(driver, num_articles)
+        if not urls:
+            sys.exit("⚠️  No article URLs found.")
 
-    articles_data = []
-    for url in article_urls:
-        print(f"Scraping article from: {url}")
-        article_data = extract_foreign_affairs_article(url)
-        if article_data:
-            # === ADD URL TO ARTICLE DATA (MINIMAL ADDITION) ===
-            article_data["url"] = url
-            articles_data.append(article_data)
-        else:
-            print(f"Failed to scrape article from: {url}")
+        save_cookies(driver)  # cache any new session cookies
 
-    if not articles_data:
-        print("No article data scraped successfully. Exiting.")
-        sys.exit(1)
+        for url in urls:
+            if fetch_article(conn, url):
+                print(f"[✓] Already summarised: {url}")
+                continue
 
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("Error: GEMINI_API_KEY environment variable not set.")
-        print("Please set your Gemini API key as an environment variable named GEMINI_API_KEY.")
-        sys.exit(1)
+            art = scrape_article(driver, url)
+            if not art:
+                continue
 
-    model = create_client(api_key)
+            thesis = core_thesis(gem, art)
+            abstract = detailed_abstract(gem, art)
+            quotes = supporting_data(gem, art)
 
-    # === INITIALIZE DATABASE (MINIMAL ADDITION) ===
-    conn = init_db("articles.db")
-
-    print("\n--- Article Summaries ---")
-    for article in articles_data:
-        existing_record = get_article_by_url(conn, article["url"])
-        if existing_record:
-            # If found in DB, just print what's stored
-            db_title, db_author, db_article_text, db_core_thesis, db_detailed_abstract, db_supporting_data_quotes = existing_record
-            print(f"\n--- ARTICLE (FROM DB): {db_title} by {db_author} ---")
-            print("\n=== CORE THESIS ===")
-            print(db_core_thesis)
-            print("\n=== DETAILED ABSTRACT ===")
-            print(db_detailed_abstract)
-            print("\n=== SUPPORTING DATA AND QUOTES ===")
-            print(db_supporting_data_quotes)
-            print("\n=== FULL TEXT ===")
-            print(db_article_text)
-            print("-" * 50)
-        else:
-            # Otherwise, generate new summaries and store them
-            print(f"\n--- ARTICLE: {article['title']} by {article['author']} ---")
-
-            core_thesis = generate_core_thesis(model, article)
-            detailed_abstract = generate_detailed_abstract(model, article)
-            supporting_data_quotes = generate_supporting_data_quotes(model, article)
-
-            print("\n=== CORE THESIS ===")
-            print(core_thesis)
-            print("\n=== DETAILED ABSTRACT ===")
-            print(detailed_abstract)
-            print("\n=== SUPPORTING DATA AND QUOTES ===")
-            print(supporting_data_quotes)
-            print("\n=== FULL TEXT ===")
-            print(article["text"])
-            print("-" * 50)
+            print(f"\n▶ {art['title']} — {art['author']}")
+            print("  • Core thesis:", thesis)
+            print("  • Abstract:\n", abstract)
+            print("  • Data / Quotes:\n", quotes[:400], "…")  # trimmed for terminal
 
             insert_article(
                 conn,
                 source="Foreign Affairs",
-                url=article["url"],
-                title=article["title"],
-                author=article["author"],
-                article_text=article["text"],
-                core_thesis=core_thesis,
-                detailed_abstract=detailed_abstract,
-                supporting_data_quotes=supporting_data_quotes
+                url=art["url"],
+                title=art["title"],
+                author=art["author"],
+                article_text=art["text"],
+                core_thesis=thesis,
+                detailed_abstract=abstract,
+                supporting_data_quotes=quotes,
             )
 
     conn.close()
+    print("\n✅  Done.")
+
 
 if __name__ == "__main__":
     main()
