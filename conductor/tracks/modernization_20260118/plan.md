@@ -29,9 +29,9 @@
 - [x] Task: Project Restructuring and Layering dffd3bf
     - [x] Create directory structure: `lib/core`, `lib/domain`, `lib/data`, `lib/presentation`
     - [x] Move existing models to `lib/domain/entities`
-- [ ] Task: Domain Layer Implementation
-    - [ ] Define `ArticleRepository` abstract interface
-    - [ ] Create `GetArticles` UseCase (if following strict Clean Arch)
+- [x] Task: Domain Layer Implementation 0f4d2a7
+    - [x] Define `ArticleRepository` abstract interface
+    - [x] Create `GetArticles` UseCase (if following strict Clean Arch)
 - [ ] Task: Data Layer Implementation (TDD)
     - [ ] **Red:** Write tests for `RemoteArticleDataSource` using a mock client
     - [ ] **Green:** Implement `RemoteArticleDataSource` using the `http` package
