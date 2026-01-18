@@ -4,6 +4,4 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-- [x] **Track: Full Stack Modernization (FastAPI & Flutter Refactor)**
-*Link: [./tracks/modernization_20260118/](./tracks/modernization_20260118/)*
 
