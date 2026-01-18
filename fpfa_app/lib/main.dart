@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'domain/entities/article.dart';
 
 void main() {
   runApp(const MyApp());
@@ -22,66 +23,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class Article {
-  final String source;
-  final String url;
-  final String title;
-  final String author;
-  final String date;
-  final String coreThesis;
-  final String detailedAbstract;
-  final List<String> quotes;
-
-  Article({
-    required this.source,
-    required this.url,
-    required this.title,
-    required this.author,
-    required this.date,
-    required this.coreThesis,
-    required this.detailedAbstract,
-    required this.quotes,
-  });
-
-  String get shortDate {
-    final parts = date.split(' ').first.split('-');
-    if (parts.length < 3) return date;
-    final monthNames = [
-      '',
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-    final month = int.tryParse(parts[1]) ?? 0;
-    final day = int.tryParse(parts[2]) ?? 1;
-    return '${monthNames[month]} $day';
-  }
-
-  factory Article.fromJson(Map<String, dynamic> json) {
-    return Article(
-      source: json['source'] as String,
-      url: json['url'] as String,
-      title: json['title'] as String,
-      author: json['author'] as String,
-      date: json['date_added'] as String,
-      coreThesis: json['core_thesis'] as String,
-      detailedAbstract: json['detailed_abstract'] as String,
-      quotes: (json['supporting_data_quotes'] as String)
-          .split('*')
-          .where((q) => q.trim().isNotEmpty)
-          .toList(),
-    );
-  }
-}
+// Article class moved to domain/entities/article.dart
 
 enum CardState { stacked, front, back, quotes }
 
@@ -200,7 +142,21 @@ class _HomePageState extends State<HomePage> {
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         setState(() {
-          articles = data.map((e) => Article.fromJson(e)).toList();
+          articles = data.map((e) {
+            return Article(
+              source: e['source'] as String,
+              url: e['url'] as String,
+              title: e['title'] as String,
+              author: e['author'] as String,
+              date: e['date_added'] as String,
+              coreThesis: e['core_thesis'] as String,
+              detailedAbstract: e['detailed_abstract'] as String,
+              quotes: (e['supporting_data_quotes'] as String)
+                  .split('*')
+                  .where((q) => q.trim().isNotEmpty)
+                  .toList(),
+            );
+          }).toList();
           loading = false;
           error = '';
         });
