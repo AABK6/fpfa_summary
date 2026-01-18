@@ -6,10 +6,10 @@
     - [x] Add `fastapi`, `uvicorn`, `pydantic` to `requirements.txt`
     - [x] Create a new entry point `main.py` for FastAPI
     - [x] Configure standard CORS and health check skeleton
-- [ ] Task: Define Data Models (Pydantic)
-    - [ ] Create `models/article.py` defining the `Article` schema
-    - [ ] Implement validation logic for article fields (URLs, dates)
-    - [ ] Write unit tests for model validation
+- [x] Task: Define Data Models (Pydantic) b435708
+    - [x] Create `models/article.py` defining the `Article` schema
+    - [x] Implement validation logic for article fields (URLs, dates)
+    - [x] Write unit tests for model validation
 - [ ] Task: Implement Data Access Layer
     - [ ] Refactor `get_latest_articles` into a standalone service/repository
     - [ ] Write tests for data retrieval logic using a mock/temporary database
