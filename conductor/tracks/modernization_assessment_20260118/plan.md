@@ -12,7 +12,7 @@
     - [x] Update `audit_report.md` with frontend findings
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Discovery and Audit' (Protocol in workflow.md) 7c19bca
 
-## Phase 2: Dependency Updates and Stabilization
+## Phase 2: Dependency Updates and Stabilization [checkpoint: 5a2142e]
 
 - [x] Task: Create Modernization Branch fc56448
     - [x] Create a new branch `modernization/dependency-updates` from `master` (or the default branch) fc56448
