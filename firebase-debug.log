@@ -510,3 +510,131 @@
 [debug] [2026-01-18T18:08:49.279Z] <<< [apiv2][body] GET https://cloudbilling.googleapis.com/v1/projects/the-economist-reader/billingInfo {"name":"projects/the-economist-reader/billingInfo","projectId":"the-economist-reader","billingAccountName":"","billingEnabled":false}
 [debug] [2026-01-18T18:08:49.280Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
 [debug] [2026-01-18T18:08:49.280Z] Running auto auth
+[debug] [2026-01-18T20:20:15.806Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-18T20:20:15.814Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-18T20:20:15.920Z] Running auto auth
+[debug] [2026-01-18T20:20:15.920Z] Running auto auth
+[debug] [2026-01-18T20:20:15.921Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:15.921Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:15.922Z] >>> [apiv2][query] GET https://cloudbilling.googleapis.com/v1/projects/the-economist-reader/billingInfo [none]
+[debug] [2026-01-18T20:20:15.923Z] >>> [apiv2][query] GET https://cloudbilling.googleapis.com/v1/projects/the-economist-reader/billingInfo [none]
+[debug] [2026-01-18T20:20:16.545Z] <<< [apiv2][status] GET https://cloudbilling.googleapis.com/v1/projects/the-economist-reader/billingInfo 200
+[debug] [2026-01-18T20:20:16.546Z] <<< [apiv2][body] GET https://cloudbilling.googleapis.com/v1/projects/the-economist-reader/billingInfo {"name":"projects/the-economist-reader/billingInfo","projectId":"the-economist-reader","billingAccountName":"","billingEnabled":false}
+[debug] [2026-01-18T20:20:16.591Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.591Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.592Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.592Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.592Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.592Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.592Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.597Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.597Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.597Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firestore.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.597Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firestore.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.598Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/storage.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.598Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/storage.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.598Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebasedataconnect.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.598Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebasedataconnect.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.599Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/identitytoolkit.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.599Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/identitytoolkit.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.599Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/fcm.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.599Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/fcm.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.600Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/cloudfunctions.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.600Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/cloudfunctions.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.601Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseremoteconfig.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.601Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseremoteconfig.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.601Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseapphosting.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.601Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseapphosting.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.602Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseio.com [none]
+[debug] [2026-01-18T20:20:16.602Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseio.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.644Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.644Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseappdistribution.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.644Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseappdistribution.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.650Z] <<< [apiv2][status] GET https://cloudbilling.googleapis.com/v1/projects/the-economist-reader/billingInfo 200
+[debug] [2026-01-18T20:20:16.650Z] <<< [apiv2][body] GET https://cloudbilling.googleapis.com/v1/projects/the-economist-reader/billingInfo {"name":"projects/the-economist-reader/billingInfo","projectId":"the-economist-reader","billingAccountName":"","billingEnabled":false}
+[debug] [2026-01-18T20:20:16.650Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.650Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.650Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.650Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.650Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.650Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.650Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.651Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.652Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.652Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firestore.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.652Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firestore.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.652Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/storage.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.652Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/storage.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.652Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebasedataconnect.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.652Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebasedataconnect.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.653Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/identitytoolkit.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.653Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/identitytoolkit.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.653Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/fcm.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.653Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/fcm.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.653Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/cloudfunctions.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.653Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/cloudfunctions.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.653Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseremoteconfig.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.653Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseremoteconfig.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.653Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseapphosting.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.653Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseapphosting.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.654Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseio.com [none]
+[debug] [2026-01-18T20:20:16.654Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseio.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:16.690Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:16.690Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseappdistribution.googleapis.com [none]
+[debug] [2026-01-18T20:20:16.690Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseappdistribution.googleapis.com x-goog-quota-user=projects/the-economist-reader
+[debug] [2026-01-18T20:20:17.221Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firestore.googleapis.com 403
+[debug] [2026-01-18T20:20:17.221Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firestore.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.224Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/storage.googleapis.com 403
+[debug] [2026-01-18T20:20:17.224Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/storage.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.238Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseapphosting.googleapis.com 403
+[debug] [2026-01-18T20:20:17.238Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseapphosting.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.238Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/identitytoolkit.googleapis.com 403
+[debug] [2026-01-18T20:20:17.239Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/identitytoolkit.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.243Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/fcm.googleapis.com 403
+[debug] [2026-01-18T20:20:17.243Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/fcm.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.243Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/cloudfunctions.googleapis.com 403
+[debug] [2026-01-18T20:20:17.243Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/cloudfunctions.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.250Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebasedataconnect.googleapis.com 403
+[debug] [2026-01-18T20:20:17.251Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebasedataconnect.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.251Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseremoteconfig.googleapis.com 403
+[debug] [2026-01-18T20:20:17.251Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseremoteconfig.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.269Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseio.com 403
+[debug] [2026-01-18T20:20:17.270Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseio.com [omitted]
+[debug] [2026-01-18T20:20:17.270Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/storage.googleapis.com 403
+[debug] [2026-01-18T20:20:17.270Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/storage.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.271Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firestore.googleapis.com 403
+[debug] [2026-01-18T20:20:17.271Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firestore.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.273Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseappdistribution.googleapis.com 403
+[debug] [2026-01-18T20:20:17.273Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseappdistribution.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.292Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebasedataconnect.googleapis.com 403
+[debug] [2026-01-18T20:20:17.292Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebasedataconnect.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.297Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/cloudfunctions.googleapis.com 403
+[debug] [2026-01-18T20:20:17.297Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/cloudfunctions.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.297Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/identitytoolkit.googleapis.com 403
+[debug] [2026-01-18T20:20:17.297Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/identitytoolkit.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.313Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseapphosting.googleapis.com 403
+[debug] [2026-01-18T20:20:17.313Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseapphosting.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.314Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseappdistribution.googleapis.com 403
+[debug] [2026-01-18T20:20:17.314Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseappdistribution.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.315Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/fcm.googleapis.com 403
+[debug] [2026-01-18T20:20:17.315Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/fcm.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.316Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseio.com 403
+[debug] [2026-01-18T20:20:17.316Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseio.com [omitted]
+[debug] [2026-01-18T20:20:17.320Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseremoteconfig.googleapis.com 403
+[debug] [2026-01-18T20:20:17.320Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/the-economist-reader/services/firebaseremoteconfig.googleapis.com [omitted]
+[debug] [2026-01-18T20:20:17.321Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-18T20:20:17.321Z] Running auto auth
+[debug] [2026-01-18T20:20:17.321Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:17.321Z] >>> [apiv2][query] GET https://cloudbilling.googleapis.com/v1/projects/the-economist-reader/billingInfo [none]
+[debug] [2026-01-18T20:20:17.891Z] <<< [apiv2][status] GET https://cloudbilling.googleapis.com/v1/projects/the-economist-reader/billingInfo 200
+[debug] [2026-01-18T20:20:17.891Z] <<< [apiv2][body] GET https://cloudbilling.googleapis.com/v1/projects/the-economist-reader/billingInfo {"name":"projects/the-economist-reader/billingInfo","projectId":"the-economist-reader","billingAccountName":"","billingEnabled":false}
+[debug] [2026-01-18T20:20:17.892Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-18T20:20:17.892Z] Running auto auth
+[debug] [2026-01-18T20:20:17.894Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-18T20:20:17.894Z] Running auto auth
+[debug] [2026-01-18T20:20:17.894Z] No OAuth tokens found
+[debug] [2026-01-18T20:20:17.895Z] >>> [apiv2][query] GET https://cloudbilling.googleapis.com/v1/projects/the-economist-reader/billingInfo [none]
+[debug] [2026-01-18T20:20:18.529Z] <<< [apiv2][status] GET https://cloudbilling.googleapis.com/v1/projects/the-economist-reader/billingInfo 200
+[debug] [2026-01-18T20:20:18.529Z] <<< [apiv2][body] GET https://cloudbilling.googleapis.com/v1/projects/the-economist-reader/billingInfo {"name":"projects/the-economist-reader/billingInfo","projectId":"the-economist-reader","billingAccountName":"","billingEnabled":false}
+[debug] [2026-01-18T20:20:18.529Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-18T20:20:18.529Z] Running auto auth

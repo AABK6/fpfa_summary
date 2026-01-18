@@ -1,4 +1,4 @@
-# Track modernization_assessment_20260118 Context
+# Track modernization_20260118 Context
 
 - [Specification](./spec.md)
 - [Implementation Plan](./plan.md)
