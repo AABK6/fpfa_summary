@@ -48,7 +48,7 @@
     - [x] **Green:** Refactor `HomePage` and `Deck` to consume state from the provider
 - [x] Task: Conductor - User Manual Verification 'Phase 2: Frontend Architectural Refactor (Flutter)' (Protocol in workflow.md) 178b6c1
 
-## Phase 3: Integration, E2E Testing, and CI/CD
+## Phase 3: Integration, E2E Testing, and CI/CD [checkpoint: cff382c]
 
 - [x] Task: End-to-End (E2E) Testing e6c1cad
     - [x] Setup `flutter_driver` or `integration_test` package
@@ -60,4 +60,4 @@
 - [x] Task: Performance Benchmarking 6ff946b
     - [x] Run load tests (e.g., using `locust` or simple scripts) against both Flask and FastAPI
     - [x] Document findings in the final report
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: Integration, E2E Testing, and CI/CD' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 3: Integration, E2E Testing, and CI/CD' (Protocol in workflow.md) cff382c
