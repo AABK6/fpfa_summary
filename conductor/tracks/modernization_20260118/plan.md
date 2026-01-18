@@ -38,9 +38,9 @@
     - [-] **Red:** Write tests for `LocalArticleDataSource` (Offline Support) (Skipped: Environment issue)
     - [x] **Green:** Implement `LocalArticleDataSource` using `shared_preferences` or `sqflite`
     - [x] Implement the `ArticleRepository` to manage data coordination (Remote -> Cache -> Local)
-- [ ] Task: Presentation Layer - Theming and Shared UI
-    - [ ] Create `lib/core/theme.dart` with centralized `ThemeData`
-    - [ ] Implement `ErrorWidget`, `LoadingWidget`, and `EmptyStateWidget`
+- [x] Task: Presentation Layer - Theming and Shared UI a5a0a62
+    - [x] Create `lib/core/theme.dart` with centralized `ThemeData`
+    - [x] Implement `ErrorWidget`, `LoadingWidget`, and `EmptyStateWidget`
     - [ ] Update `ArticleCard` and `Deck` to use centralized theme constants
 - [ ] Task: State Management Migration (Provider/Riverpod)
     - [ ] Setup the state management provider for articles
