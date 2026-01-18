@@ -18,10 +18,10 @@
     - [x] **Green:** Implement the `/api/articles` endpoint in FastAPI
     - [x] **Red:** Write failing test for the root `/` HTML route
     - [x] **Green:** Implement the Jinja2 template rendering for the root route
-- [ ] Task: Implement Health and Documentation
-    - [ ] Implement the `/health` endpoint
-    - [ ] Configure custom Swagger UI metadata and ReDoc
-    - [ ] Verify `/docs` is accessible and correctly reflects the schema
+- [x] Task: Implement Health and Documentation 309b310
+    - [x] Implement the `/health` endpoint
+    - [x] Configure custom Swagger UI metadata and ReDoc
+    - [x] Verify `/docs` is accessible and correctly reflects the schema
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Backend Migration (FastAPI)' (Protocol in workflow.md)
 
 ## Phase 2: Frontend Architectural Refactor (Flutter)
