@@ -64,3 +64,15 @@ async def test_root_html():
     assert "text/html" in response.headers["content-type"]
     assert "Title 1" in response.text # Check if content is rendered
 
+@pytest.mark.asyncio
+async def test_docs_accessible():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response_docs = await ac.get("/docs")
+        response_redoc = await ac.get("/redoc")
+        response_openapi = await ac.get("/openapi.json")
+    
+    assert response_docs.status_code == 200
+    assert response_redoc.status_code == 200
+    assert response_openapi.status_code == 200
+    assert "FPFA Summary API" in response_openapi.json()["info"]["title"]
+
