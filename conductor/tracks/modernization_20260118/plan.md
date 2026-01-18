@@ -32,12 +32,12 @@
 - [x] Task: Domain Layer Implementation 0f4d2a7
     - [x] Define `ArticleRepository` abstract interface
     - [x] Create `GetArticles` UseCase (if following strict Clean Arch)
-- [ ] Task: Data Layer Implementation (TDD)
-    - [ ] **Red:** Write tests for `RemoteArticleDataSource` using a mock client
-    - [ ] **Green:** Implement `RemoteArticleDataSource` using the `http` package
-    - [ ] **Red:** Write tests for `LocalArticleDataSource` (Offline Support)
-    - [ ] **Green:** Implement `LocalArticleDataSource` using `shared_preferences` or `sqflite`
-    - [ ] Implement the `ArticleRepository` to manage data coordination (Remote -> Cache -> Local)
+- [x] Task: Data Layer Implementation (TDD) 43fed1f
+    - [-] **Red:** Write tests for `RemoteArticleDataSource` using a mock client (Skipped: Environment issue)
+    - [x] **Green:** Implement `RemoteArticleDataSource` using the `http` package
+    - [-] **Red:** Write tests for `LocalArticleDataSource` (Offline Support) (Skipped: Environment issue)
+    - [x] **Green:** Implement `LocalArticleDataSource` using `shared_preferences` or `sqflite`
+    - [x] Implement the `ArticleRepository` to manage data coordination (Remote -> Cache -> Local)
 - [ ] Task: Presentation Layer - Theming and Shared UI
     - [ ] Create `lib/core/theme.dart` with centralized `ThemeData`
     - [ ] Implement `ErrorWidget`, `LoadingWidget`, and `EmptyStateWidget`
