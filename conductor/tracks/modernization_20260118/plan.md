@@ -24,7 +24,7 @@
     - [x] Verify `/docs` is accessible and correctly reflects the schema
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Backend Migration (FastAPI)' (Protocol in workflow.md) bae2759
 
-## Phase 2: Frontend Architectural Refactor (Flutter)
+## Phase 2: Frontend Architectural Refactor (Flutter) [checkpoint: 178b6c1]
 
 - [x] Task: Project Restructuring and Layering dffd3bf
     - [x] Create directory structure: `lib/core`, `lib/domain`, `lib/data`, `lib/presentation`
@@ -46,7 +46,7 @@
     - [x] Setup the state management provider for articles
     - [-] **Red:** Write widget tests for the `Deck` ensuring it reacts to different states (Loading, Error, Success) (Skipped: Environment issue)
     - [x] **Green:** Refactor `HomePage` and `Deck` to consume state from the provider
-- [ ] Task: Conductor - User Manual Verification 'Phase 2: Frontend Architectural Refactor (Flutter)' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 2: Frontend Architectural Refactor (Flutter)' (Protocol in workflow.md) 178b6c1
 
 ## Phase 3: Integration, E2E Testing, and CI/CD
 
