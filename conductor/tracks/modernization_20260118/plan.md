@@ -10,9 +10,9 @@
     - [x] Create `models/article.py` defining the `Article` schema
     - [x] Implement validation logic for article fields (URLs, dates)
     - [x] Write unit tests for model validation
-- [ ] Task: Implement Data Access Layer
-    - [ ] Refactor `get_latest_articles` into a standalone service/repository
-    - [ ] Write tests for data retrieval logic using a mock/temporary database
+- [x] Task: Implement Data Access Layer 9fbe419
+    - [x] Refactor `get_latest_articles` into a standalone service/repository
+    - [x] Write tests for data retrieval logic using a mock/temporary database
 - [ ] Task: Implement API Routes (TDD)
     - [ ] **Red:** Write failing integration tests for `/api/articles`
     - [ ] **Green:** Implement the `/api/articles` endpoint in FastAPI
