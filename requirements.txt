@@ -50,3 +50,5 @@ pytest==9.0.2
 fastapi
 uvicorn
 pytest-asyncio
+pytest-mock
+aiofiles
