@@ -26,9 +26,9 @@
 
 ## Phase 2: Frontend Architectural Refactor (Flutter)
 
-- [ ] Task: Project Restructuring and Layering
-    - [ ] Create directory structure: `lib/core`, `lib/domain`, `lib/data`, `lib/presentation`
-    - [ ] Move existing models to `lib/domain/entities`
+- [x] Task: Project Restructuring and Layering dffd3bf
+    - [x] Create directory structure: `lib/core`, `lib/domain`, `lib/data`, `lib/presentation`
+    - [x] Move existing models to `lib/domain/entities`
 - [ ] Task: Domain Layer Implementation
     - [ ] Define `ArticleRepository` abstract interface
     - [ ] Create `GetArticles` UseCase (if following strict Clean Arch)
