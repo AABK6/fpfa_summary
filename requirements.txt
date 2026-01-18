@@ -47,3 +47,6 @@ playwright==1.57.0
 playwright-stealth==2.0.1
 Flask-Cors==6.0.2
 pytest==9.0.2
+fastapi
+uvicorn
+pytest-asyncio
