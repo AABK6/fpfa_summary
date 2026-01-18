@@ -57,7 +57,7 @@
     - [x] Update `.github/workflows/` to include Python dependency caching for FastAPI
     - [x] Add steps for FastAPI linting and unit tests
     - [x] Update Flutter workflow to include the new architectural tests
-- [ ] Task: Performance Benchmarking
-    - [ ] Run load tests (e.g., using `locust` or simple scripts) against both Flask and FastAPI
-    - [ ] Document findings in the final report
+- [x] Task: Performance Benchmarking 6ff946b
+    - [x] Run load tests (e.g., using `locust` or simple scripts) against both Flask and FastAPI
+    - [x] Document findings in the final report
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: Integration, E2E Testing, and CI/CD' (Protocol in workflow.md)
