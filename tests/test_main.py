@@ -24,15 +24,19 @@ async def test_get_articles_endpoint():
     ]
     mock_service.get_latest_articles.return_value = mock_articles
     
-    # Override the dependency
+    # Override the dependency with an async callable to avoid threadpool
+    # handoff issues under strict asyncio test mode.
     from main import get_article_service
-    app.dependency_overrides[get_article_service] = lambda: mock_service
+    async def override_get_article_service():
+        return mock_service
+
+    app.dependency_overrides[get_article_service] = override_get_article_service
     
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/articles")
     
     # Cleanup override
-    app.dependency_overrides = {}
+    app.dependency_overrides.clear()
 
     assert response.status_code == 200
     assert len(response.json()) == 1
@@ -52,13 +56,16 @@ async def test_root_html():
     mock_service.get_latest_articles.return_value = mock_articles
     
     from main import get_article_service
-    app.dependency_overrides[get_article_service] = lambda: mock_service
+    async def override_get_article_service():
+        return mock_service
+
+    app.dependency_overrides[get_article_service] = override_get_article_service
 
     # We expect the root to return HTML
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/")
     
-    app.dependency_overrides = {}
+    app.dependency_overrides.clear()
 
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
@@ -75,4 +82,3 @@ async def test_docs_accessible():
     assert response_redoc.status_code == 200
     assert response_openapi.status_code == 200
     assert "FPFA Summary API" in response_openapi.json()["info"]["title"]
-

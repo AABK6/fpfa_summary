@@ -17,6 +17,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="templates")
 
+
+def static_url(path: str) -> str:
+    return app.url_path_for("static", path=path)
+
+
+templates.env.globals["static_url"] = static_url
+
 # Configure CORS
 origins = [
     "http://localhost",
@@ -62,7 +69,7 @@ async def home(request: Request, service: ArticleService = Depends(get_article_s
     # We need to ensure index.html supports object attribute access ({{ article.title }}) 
     # or if it expects dict access ({{ article['title'] }}).
     # Let's check index.html.
-    return templates.TemplateResponse("index.html", {"request": request, "articles": articles})
+    return templates.TemplateResponse(request, "index.html", {"articles": articles})
 
 if __name__ == "__main__":
     import uvicorn

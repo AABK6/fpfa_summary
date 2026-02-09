@@ -6,6 +6,14 @@ import os
 app = Flask(__name__)
 CORS(app)
 
+
+@app.context_processor
+def utility_processor():
+    def static_url(path: str) -> str:
+        return app.url_for('static', filename=path)
+
+    return {'static_url': static_url}
+
 def get_latest_articles(limit=10):
     """
     Fetch the latest articles from the 'articles' table,

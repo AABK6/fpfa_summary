@@ -1,42 +1,109 @@
 # Foreign Policy & Foreign Affairs Summaries
 
-This repository contains a small Flask backend that serves article summaries from `articles.db` and a Flutter front-end (`fpfa_app`) that displays them.
+This repository stores summarized articles in `articles.db`, serves them through a Python backend, and displays them in the Flutter app under `fpfa_app/`.
 
-## Running the backend
+## Canonical ingestion path
+
+Use these scripts for article ingestion:
+
+- `summarize_fa_hardened.py` for Foreign Affairs (requests-first, optional Playwright fallback)
+- `summarize_fp.py` for Foreign Policy (requests-based)
+
+`summarize_fa.py` is kept only as a compatibility shim and forwards to `summarize_fa_hardened.py`.
+
+### Run ingestion manually
+
+```bash
+pip install -r requirements.txt
+python summarize_fa_hardened.py 7
+python summarize_fp.py 7
+```
+
+Both scripts require `GEMINI_API_KEY` for summary generation.
+
+## Data freshness and branch sync
+
+`articles.db` is committed to git and can differ between branches.
+
+If your local DB looks stale:
+
+```bash
+git fetch origin
+git checkout origin/master -- articles.db
+```
+
+Then check newest rows:
+
+```bash
+python - <<'PY'
+import sqlite3
+conn = sqlite3.connect("articles.db")
+print(conn.execute("SELECT MAX(date_added) FROM articles").fetchone()[0])
+conn.close()
+PY
+```
+
+## Run the backend
+
+Flask backend:
 
 ```bash
 pip install -r requirements.txt
 python app.py
 ```
 
-The API will be available at `http://localhost:5000/api/articles` by default.
-
-## Running the Flutter app
-
-From the `fpfa_app` directory, run `flutter run`. The app expects the backend URL specified by the `API_BASE_URL` compile-time environment variable. If none is supplied, it defaults to `http://localhost:5000` (or `http://10.0.2.2:5000` when running on the Android emulator).
-
-Example:
+FastAPI backend:
 
 ```bash
-flutter run -d chrome --dart-define=API_BASE_URL=http://192.168.1.100:5000
+pip install -r requirements.txt
+python main.py
 ```
 
-## Troubleshooting
-If the Flutter app displays **"Failed to load articles"**, confirm the backend is reachable and that the app is using the correct API URL.
+Endpoints:
 
-1. Start the Flask server (from this directory):
-   ```bash
-   pip install -r requirements.txt
-   python app.py
-   ```
-2. Verify the endpoint returns data:
-   ```bash
-   curl http://localhost:5000/api/articles | head
-   ```
-   You should see JSON output.
-3. Run the Flutter app with an explicit API URL (adjust if the server runs elsewhere):
-   ```bash
-   flutter run -d edge --dart-define=API_BASE_URL=http://localhost:5000
-   ```
-4. Ensure `articles.db` exists in the project root so the backend can read the database.
+- Flask: `http://localhost:5000/api/articles`
+- FastAPI: `http://localhost:8000/api/articles`
 
+## Run the Flutter app
+
+From `fpfa_app/`:
+
+```bash
+flutter run --dart-define=API_BASE_URL=http://localhost:5000
+```
+
+Default base URL behavior:
+
+- Web/Desktop: `http://localhost:5000`
+- Android emulator: `http://10.0.2.2:5000`
+
+## Automation
+
+The scheduled updater is `.github/workflows/update_articles.yml` and runs every 4 hours.
+It executes:
+
+- `python summarize_fa_hardened.py 7`
+- `python summarize_fp.py 7`
+
+Operational behavior:
+
+- Fails fast if ingestion fails (no silent `continue-on-error`).
+- Commits only `articles.db` when content changed.
+- Triggers deployment workflow only after a successful DB update commit.
+
+## Repository cleanup notes
+
+Removed obsolete experimental files:
+
+- `testvpn.py` (contained hardcoded proxy credentials and was not part of production flow)
+- `test_scraping_methods.py` (manual exploratory script, not part of CI/production)
+
+## Session handoff and open issues
+
+Latest detailed audit/handoff:
+
+- `SESSION_HANDOFF_2026-02-09.md`
+
+Actionable issue tracker derived from remaining test/fix work:
+
+- `OPEN_ISSUES_2026-02-09.md`

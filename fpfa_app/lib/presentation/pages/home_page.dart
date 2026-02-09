@@ -17,9 +17,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(() {
-      context.read<ArticleProvider>().fetchArticles();
-    });
+    context.read<ArticleProvider>().fetchArticles();
   }
 
   void _handleTapDown(TapDownDetails details) {

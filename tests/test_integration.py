@@ -49,7 +49,10 @@ async def test_full_flow_scraper_to_api(integration_service):
     conn.close()
 
     # 2. Configure app to use the integration database
-    app.dependency_overrides[get_article_service] = lambda: integration_service
+    async def override_get_article_service():
+        return integration_service
+
+    app.dependency_overrides[get_article_service] = override_get_article_service
 
     # 3. Call the API and verify the data
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -62,6 +65,6 @@ async def test_full_flow_scraper_to_api(integration_service):
     assert data[0]["source"] == "FA"
 
     # Cleanup
-    app.dependency_overrides = {}
+    app.dependency_overrides.clear()
     if os.path.exists(TEST_DB):
         os.remove(TEST_DB)

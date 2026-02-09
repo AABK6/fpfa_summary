@@ -9,15 +9,20 @@ abstract class RemoteArticleDataSource {
 class RemoteArticleDataSourceImpl implements RemoteArticleDataSource {
   final http.Client client;
   final String baseUrl;
+  final Duration requestTimeout;
 
-  RemoteArticleDataSourceImpl({required this.client, required this.baseUrl});
+  RemoteArticleDataSourceImpl({
+    required this.client,
+    required this.baseUrl,
+    this.requestTimeout = const Duration(seconds: 10),
+  });
 
   @override
   Future<List<ArticleModel>> getLatestArticles({int limit = 20}) async {
     final response = await client.get(
       Uri.parse('$baseUrl/api/articles'),
       headers: {'Content-Type': 'application/json'},
-    );
+    ).timeout(requestTimeout);
 
     if (response.statusCode == 200) {
       final List<dynamic> jsonList = json.decode(response.body);

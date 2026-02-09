@@ -12,3 +12,12 @@ def test_api_articles(client):
     # In a real test, we would mock the database or use a test database.
     # For now, we just check if it's a list.
     assert len(data) >= 0
+
+
+def test_flask_home_page_renders(client):
+    """Test Flask home page renders without template/static URL errors."""
+    response = client.get('/')
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert '<html' in body.lower()
+    assert 'styles.css' in body

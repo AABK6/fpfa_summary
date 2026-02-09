@@ -32,15 +32,12 @@ jobs:
       
       - name: Install dependencies
         run: pip install -r requirements.txt
-
-      - name: Install Playwright browsers
-        run: python -m playwright install --with-deps chromium
         
       - name: Run unit and integration tests
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          python -m pytest tests/test_main.py tests/test_models.py tests/test_services.py tests/test_integration.py
+          python -m pytest tests -q
 
       - name: Zip artifact for deployment
         run: zip release.zip ./* -r

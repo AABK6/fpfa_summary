@@ -7,7 +7,7 @@ abstract class LocalArticleDataSource {
   Future<void> cacheArticles(List<ArticleModel> articlesToCache);
 }
 
-const CACHED_ARTICLES = 'CACHED_ARTICLES';
+const cachedArticlesKey = 'CACHED_ARTICLES';
 
 class LocalArticleDataSourceImpl implements LocalArticleDataSource {
   final SharedPreferences sharedPreferences;
@@ -16,7 +16,7 @@ class LocalArticleDataSourceImpl implements LocalArticleDataSource {
 
   @override
   Future<List<ArticleModel>> getLastArticles() {
-    final jsonString = sharedPreferences.getString(CACHED_ARTICLES);
+    final jsonString = sharedPreferences.getString(cachedArticlesKey);
     if (jsonString != null) {
       final List<dynamic> jsonList = json.decode(jsonString);
       return Future.value(jsonList.map((json) => ArticleModel.fromJson(json)).toList());
@@ -29,7 +29,7 @@ class LocalArticleDataSourceImpl implements LocalArticleDataSource {
   Future<void> cacheArticles(List<ArticleModel> articlesToCache) {
     final List<Map<String, dynamic>> jsonList = articlesToCache.map((article) => article.toJson()).toList();
     return sharedPreferences.setString(
-      CACHED_ARTICLES,
+      cachedArticlesKey,
       json.encode(jsonList),
     );
   }

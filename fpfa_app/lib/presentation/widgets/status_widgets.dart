@@ -32,7 +32,7 @@ class ErrorDisplayWidget extends StatelessWidget {
           Text(
             message,
             style: Theme.of(context).textTheme.bodyLarge,
-            textAlign: Center,
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
           ElevatedButton(

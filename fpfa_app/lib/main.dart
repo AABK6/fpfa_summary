@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,6 +11,19 @@ import 'data/repositories/article_repository_impl.dart';
 import 'domain/usecases/get_articles.dart';
 import 'presentation/providers/article_provider.dart';
 import 'presentation/pages/home_page.dart';
+
+String _resolveApiBaseUrl() {
+  const configuredBaseUrl = String.fromEnvironment('API_BASE_URL');
+  if (configuredBaseUrl.isNotEmpty) {
+    return configuredBaseUrl;
+  }
+
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    return 'http://10.0.2.2:5000';
+  }
+
+  return 'http://localhost:5000';
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,7 +38,7 @@ void main() async {
           update: (context, client, prefs, _) {
             final remoteDataSource = RemoteArticleDataSourceImpl(
               client: client,
-              baseUrl: 'http://localhost:8000', // Default for local dev with FastAPI
+              baseUrl: _resolveApiBaseUrl(),
             );
             final localDataSource = LocalArticleDataSourceImpl(
               sharedPreferences: prefs,

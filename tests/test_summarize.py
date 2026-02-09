@@ -2,7 +2,6 @@ import unittest
 from unittest.mock import patch, MagicMock
 import summarize_fa_hardened
 import summarize_fp
-import summarize_fa
 
 class TestSummarizeFAHardened(unittest.TestCase):
     def test_extract_fa_article_basic(self):
@@ -96,37 +95,6 @@ class TestSummarizeFP(unittest.TestCase):
         self.assertEqual(len(urls), 2)
         self.assertIn("https://foreignpolicy.com/article/1", urls)
         self.assertIn("https://foreignpolicy.com/article/2", urls)
-
-class TestSummarizeFA(unittest.TestCase):
-    def test_scrape_article(self):
-        """Test extraction logic for Foreign Affairs (Legacy/Selenium)."""
-        mock_driver = MagicMock()
-        mock_driver.page_source = """
-        <html>
-            <body>
-                <h1 class="topper__title">Legacy Title</h1>
-                <h3 class="topper__byline">Legacy Author</h3>
-                <article>
-                    <p>Legacy Paragraph</p>
-                </article>
-            </body>
-        </html>
-        """
-        
-        # Mock constants/globals if needed, or rely on them being set in module
-        # scrape_article calls driver.get(), _wait_for_article(driver), etc.
-        
-        # We need to mock _wait_for_article and _cloudflare_blocked as they are internal calls in scrape_article
-        # or we can mock them where they are defined.
-        
-        with patch('summarize_fa._wait_for_article') as mock_wait, \
-             patch('summarize_fa._cloudflare_blocked', return_value=False) as mock_cf:
-            
-            result = summarize_fa.scrape_article(mock_driver, "http://test-legacy.com")
-            
-            self.assertEqual(result['title'], "Legacy Title")
-            self.assertEqual(result['author'], "Legacy Author")
-            self.assertIn("Legacy Paragraph", result['text'])
 
 if __name__ == '__main__':
     unittest.main()

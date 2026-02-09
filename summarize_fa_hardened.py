@@ -3,7 +3,8 @@
 Hardened Foreign Affairs summariser
 ----------------------------------
 Implements three changes requested 31 May 2025:
-  1.  Uses Playwright + playwright‑stealth instead of Selenium/undetected‑chromedriver.
+  1.  Uses plain HTTP requests by default (no Selenium / chromedriver required).
+      Falls back to Playwright + stealth only if Cloudflare blocks requests.
   2.  Checks the SQLite cache **before** loading a page, so we do not waste browser time on
       articles we already have.
   3.  All network calls have a bounded `MAX_RETRIES` (default=3) so Cloudflare loops
@@ -12,7 +13,7 @@ Implements three changes requested 31 May 2025:
 Extra perks:
   • Compatible with the other DB helpers already present in the repo.
   • Completely synchronous – no asyncio – to keep it drop‑in.
-  • Requires two extra pip installs:playwri
+  • Browser tooling is optional and only used as fallback:
         pip install playwright playwright-stealth
         playwright install chromium
 """
@@ -25,8 +26,7 @@ import sqlite3
 from typing import List, Dict
 
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright, TimeoutError as PWTimeoutError
-from playwright_stealth import stealth  # pip install playwright-stealth
+import requests
 from google import genai  #  → works exactly as in the original script
 
 # --------------------------------------------------------------------------------------
@@ -34,6 +34,7 @@ from google import genai  #  → works exactly as in the original script
 # --------------------------------------------------------------------------------------
 START_URL = "https://www.foreignaffairs.com/most-recent"
 MAX_RETRIES = 3  # Hard‑cap on Cloudflare / navigation retries
+REQUEST_TIMEOUT = 20
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -120,30 +121,82 @@ def get_article_by_url(conn, url):
 
 
 # --------------------------------------------------------------------------------------
-# Playwright helpers –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––-
+# Fetch helpers –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 # --------------------------------------------------------------------------------------
 
-def fetch_html(url: str, max_retries: int = MAX_RETRIES) -> str | None:
-    """Return fully‑rendered HTML or *None* if Cloudflare beat us."""
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage"],
-        )
-        context = browser.new_context(user_agent=USER_AGENT, viewport={"width": 1280, "height": 800})
-        page = context.new_page()
-        stealth(page)  # ← zero‑cost, hides playwright fingerprints
+def _cloudflare_blocked(html: str) -> bool:
+    return "Attention Required" in html or "cf-chl" in html
 
-        for attempt in range(1, max_retries + 1):
-            try:
-                page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                # Simple Cloudflare detector
-                if "Attention Required" in page.content() or "cf-chl" in page.content():
-                    continue  # try again (browser stays open)
-                return page.content()
-            except PWTimeoutError:
-                pass  # silently fall through to retry loop
-        return None  # Give up – caller decides how to handle
+
+def _fetch_html_via_requests(url: str, max_retries: int) -> str | None:
+    session = requests.Session()
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Accept-Language": "en-US,en;q=0.9",
+        "Connection": "keep-alive",
+    }
+
+    for _ in range(max_retries):
+        try:
+            response = session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            html = response.text
+            if _cloudflare_blocked(html):
+                continue
+            return html
+        except requests.RequestException:
+            continue
+    return None
+
+
+def _fetch_html_via_playwright(url: str, max_retries: int) -> str | None:
+    """
+    Optional fallback used only when direct HTTP requests fail or are blocked.
+    """
+    try:
+        from playwright.sync_api import sync_playwright, TimeoutError as PWTimeoutError
+        from playwright_stealth import Stealth
+    except Exception:
+        return None
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage"],
+            )
+            context = browser.new_context(
+                user_agent=USER_AGENT,
+                viewport={"width": 1280, "height": 800},
+            )
+            page = context.new_page()
+            Stealth().apply_stealth_sync(page)
+
+            for _ in range(max_retries):
+                try:
+                    page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    html = page.content()
+                    if _cloudflare_blocked(html):
+                        continue
+                    return html
+                except PWTimeoutError:
+                    continue
+            return None
+    except Exception:
+        return None
+
+
+def fetch_html(url: str, max_retries: int = MAX_RETRIES) -> str | None:
+    """
+    Return HTML for a URL.
+    Strategy:
+      1) direct requests (no browser dependency)
+      2) optional Playwright fallback if needed
+    """
+    html = _fetch_html_via_requests(url, max_retries=max_retries)
+    if html:
+        return html
+    return _fetch_html_via_playwright(url, max_retries=max_retries)
 
 
 # --------------------------------------------------------------------------------------
