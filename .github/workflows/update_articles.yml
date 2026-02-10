@@ -5,11 +5,11 @@ permissions:
 
 on:
   schedule:
-    - cron: '0 */4 * * *'  # Run every 4 hours
+    - cron: '0 */4 * * *'  # Every 4 hours
   workflow_dispatch:
 
 jobs:
-  run-pipeline:
+  run-scripts:
     runs-on: ubuntu-latest
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -26,64 +26,45 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
-      - name: Run Foreign Affairs pipeline
-        run: python -m fpfa.cli run --sources fa --limit 7 --verbose
-        continue-on-error: true
+      - name: Install Playwright browsers (FA fallback path)
+        run: python -m playwright install --with-deps chromium
 
-      - name: Run Foreign Policy pipeline
-        run: python -m fpfa.cli run --sources fp --limit 7 --verbose
-        continue-on-error: true
+      - name: Run Foreign Affairs ingestion
+        run: python summarize_fa_hardened.py 7
 
-      - name: Check if quotes JSON migration is needed
-        id: check_migration
-        run: |
-          python - << 'PY'
-          import os, sqlite3
-          db = 'articles.db'
-          needed = False
-          if os.path.exists(db):
-              conn = sqlite3.connect(db)
-              try:
-                  cur = conn.cursor()
-                  cur.execute("PRAGMA table_info(articles)")
-                  cols = [r[1] for r in cur.fetchall()]
-                  if 'quotes_json' not in cols:
-                      needed = True
-                  else:
-                      cur.execute("SELECT COUNT(*) FROM articles WHERE (quotes_json IS NULL OR quotes_json='') AND supporting_data_quotes IS NOT NULL AND supporting_data_quotes<>''")
-                      n = cur.fetchone()[0]
-                      needed = n > 0
-              finally:
-                  conn.close()
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f"needed={'true' if needed else 'false'}\n")
-          PY
-
-      - name: Migrate quotes JSON
-        if: steps.check_migration.outputs.needed == 'true'
-        run: python -m fpfa.cli migrate quotes-json
+      - name: Run Foreign Policy ingestion
+        run: python summarize_fp.py 7
 
       - name: Configure Git
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
 
-      - name: Commit changes
+      - name: Commit DB changes
+        id: commit
         run: |
-          git add .
-          git commit -m "Update articles at $(date)" || echo "No changes to commit"
+          if git diff --quiet -- articles.db; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No DB changes to commit"
+            exit 0
+          fi
+          git add articles.db
+          git commit -m "Update articles at $(date)"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Update remote URL with PAT
+        if: steps.commit.outputs.changed == 'true'
         run: |
           git remote set-url origin https://x-access-token:${{ secrets.MY_PAT }}@github.com/${{ github.repository }}.git
 
       - name: Push changes
+        if: steps.commit.outputs.changed == 'true'
         run: git push
 
       - name: Dispatch deployment workflow
+        if: steps.commit.outputs.changed == 'true'
         uses: actions/github-script@v6
         with:
           script: |

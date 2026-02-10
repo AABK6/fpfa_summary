@@ -1,2 +1,0 @@
-"""fpfa backend package."""
-
