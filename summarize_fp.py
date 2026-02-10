@@ -11,6 +11,8 @@ from models.sources import ArticleSource
 # ======= DATABASE IMPORTS AND FUNCTIONS (MINIMAL ADDITION) =======
 import sqlite3
 
+ALLOW_TRUNCATED_CONTENT = os.getenv("ALLOW_TRUNCATED_CONTENT", "0") == "1"
+
 def init_db(db_path="articles.db"):
     """
     Creates (if not exists) a table 'articles' for storing article data.
@@ -163,7 +165,7 @@ def _fetch_html_via_playwright(url: str) -> str | None:
 
 def _is_likely_truncated(article_body: str) -> bool:
     paragraphs = [p for p in article_body.split("\n\n") if p.strip()]
-    return len(article_body) < 1200 and len(paragraphs) < 6
+    return len(article_body) < 900 and len(paragraphs) < 3
 
 
 """
@@ -323,7 +325,7 @@ def generate_detailed_abstract(client: genai.Client, article: dict) -> str:
     """
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash-preview-05-20',
+            model='gemini-2.0-flash',
             contents=prompt
         )
         return response.text.strip()
@@ -349,7 +351,7 @@ def generate_supporting_data_quotes(client: genai.Client, article: dict) -> str:
     """
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash-preview-05-20',
+            model='gemini-2.0-flash',
             contents=prompt
         )
         return response.text.strip()
@@ -390,12 +392,15 @@ def main():
             article_data["url"] = url
             if article_data.get("content_warning"):
                 print(f"[WARN] Extracted content may be truncated for URL: {url}")
+                if not ALLOW_TRUNCATED_CONTENT:
+                    print(f"[SKIP] Skipping potentially truncated article: {url}")
+                    continue
             articles_data.append(article_data)
         else:
             print(f"Failed to scrape article from: {url}")
 
     if not articles_data:
-        print("No article data scraped successfully. Exiting.")
+        print("No article data eligible for summarization (scrape failure or truncation guard). Exiting.")
         sys.exit(1)
 
     api_key = os.environ.get("GEMINI_API_KEY")
