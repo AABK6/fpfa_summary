@@ -29,6 +29,8 @@ from bs4 import BeautifulSoup
 import requests
 from google import genai  #  → works exactly as in the original script
 
+from models.sources import ArticleSource
+
 # --------------------------------------------------------------------------------------
 # Constants & configuration
 # --------------------------------------------------------------------------------------
@@ -332,7 +334,7 @@ def main():
 
         insert_article(
             conn,
-            source="Foreign Affairs",
+            source=ArticleSource.FOREIGN_AFFAIRS.value,
             url=article["url"],
             title=article["title"],
             author=article["author"],
