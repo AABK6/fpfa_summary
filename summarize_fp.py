@@ -301,7 +301,7 @@ def generate_core_thesis(client: genai.Client, article: dict) -> str:
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-flash-latest',
             contents=prompt
         )
         return response.text.strip()
@@ -325,7 +325,7 @@ def generate_detailed_abstract(client: genai.Client, article: dict) -> str:
     """
     try:
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-flash-latest',
             contents=prompt
         )
         return response.text.strip()
@@ -351,7 +351,7 @@ def generate_supporting_data_quotes(client: genai.Client, article: dict) -> str:
     """
     try:
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-flash-latest',
             contents=prompt
         )
         return response.text.strip()
