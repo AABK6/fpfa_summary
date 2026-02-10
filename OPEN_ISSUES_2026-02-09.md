@@ -155,7 +155,7 @@ This backlog converts the remaining work from `SESSION_HANDOFF_2026-02-09.md` in
 
 ---
 
-### [ ] ISSUE-10: Optional publication-date support
+### [x] ISSUE-10: Optional publication-date support
 
 **Goal**
 - Distinguish publication date from ingestion timestamp (`date_added`).
@@ -167,3 +167,6 @@ This backlog converts the remaining work from `SESSION_HANDOFF_2026-02-09.md` in
 
 **Acceptance**
 - Publication date available end-to-end or explicitly deferred with rationale.
+
+**Status update (2026-02-10)**
+- Implemented optional `publication_date` support across scrapers, schema migration-on-start, Flask/FastAPI API outputs, and HTML date rendering fallback behavior.

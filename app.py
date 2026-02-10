@@ -41,15 +41,24 @@ def get_latest_articles(limit: int = 10) -> list[dict[str, Any]]:
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     try:
+        cursor.execute("PRAGMA table_info(articles)")
+        available_columns = {row[1] for row in cursor.fetchall()}
+        publication_date_expr = (
+            "publication_date"
+            if "publication_date" in available_columns
+            else "NULL AS publication_date"
+        )
+
         cursor.execute(
             """
             SELECT
                 id, source, url, title, author, article_text,
-                core_thesis, detailed_abstract, supporting_data_quotes, date_added
+                core_thesis, detailed_abstract, supporting_data_quotes,
+                {publication_date_expr}, date_added
             FROM articles
             ORDER BY datetime(date_added) DESC
             LIMIT ?
-            """,
+            """.format(publication_date_expr=publication_date_expr),
             (limit,),
         )
         rows = cursor.fetchall()
@@ -69,7 +78,8 @@ def get_latest_articles(limit: int = 10) -> list[dict[str, Any]]:
             "core_thesis": row[6],
             "detailed_abstract": row[7],
             "supporting_data_quotes": row[8],
-            "date_added": row[9],
+            "publication_date": row[9],
+            "date_added": row[10],
         }
         for row in rows
     ]

@@ -16,10 +16,10 @@ class Article(BaseModel):
     core_thesis: str
     detailed_abstract: str
     supporting_data_quotes: str
+    publication_date: Optional[str] = None
     date_added: Optional[str] = None  # SQLite usually stores this as string
 
     @field_validator("source")
     @classmethod
     def validate_source(cls, value: str) -> str:
         return normalize_article_source(value)
-

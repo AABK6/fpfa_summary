@@ -15,6 +15,7 @@ REQUIRED_ARTICLE_KEYS = {
     "core_thesis",
     "detailed_abstract",
     "supporting_data_quotes",
+    "publication_date",
     "date_added",
 }
 
@@ -35,6 +36,7 @@ def flask_client_with_db(tmp_path, monkeypatch):
             core_thesis TEXT,
             detailed_abstract TEXT,
             supporting_data_quotes TEXT,
+            publication_date TEXT,
             date_added TEXT
         )
         """
@@ -43,13 +45,13 @@ def flask_client_with_db(tmp_path, monkeypatch):
         """
         INSERT INTO articles (
             source, url, title, author, article_text, core_thesis,
-            detailed_abstract, supporting_data_quotes, date_added
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            detailed_abstract, supporting_data_quotes, publication_date, date_added
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
-            ("FA", "https://fa.com/alpha", "Alpha", "A", "Text", "Thesis", "Abstract", "Quotes", "2023-01-03 10:00:00"),
-            (ArticleSource.FOREIGN_POLICY.value, "https://fp.com/beta", "Beta", "B", "Text", "Thesis", "Abstract", "Quotes", "2023-01-02 10:00:00"),
-            (ArticleSource.FOREIGN_AFFAIRS.value, "https://fa.com/gamma", "Gamma", "C", "Text", "Thesis", "Abstract", "Quotes", "2023-01-01 10:00:00"),
+            ("FA", "https://fa.com/alpha", "Alpha", "A", "Text", "Thesis", "Abstract", "Quotes", "2023-01-01", "2023-01-03 10:00:00"),
+            (ArticleSource.FOREIGN_POLICY.value, "https://fp.com/beta", "Beta", "B", "Text", "Thesis", "Abstract", "Quotes", None, "2023-01-02 10:00:00"),
+            (ArticleSource.FOREIGN_AFFAIRS.value, "https://fa.com/gamma", "Gamma", "C", "Text", "Thesis", "Abstract", "Quotes", "2022-12-31", "2023-01-01 10:00:00"),
         ],
     )
     conn.commit()
@@ -91,6 +93,9 @@ def test_flask_api_articles_order_and_source_normalization(flask_client_with_db)
         "2023-01-01 10:00:00",
     ]
     assert data[0]["source"] == ArticleSource.FOREIGN_AFFAIRS.value
+
+    assert data[0]["publication_date"] == "2023-01-01"
+    assert data[1]["publication_date"] is None
 
 
 def test_flask_api_articles_contract_url_serializable(flask_client_with_db):
