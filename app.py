@@ -1,7 +1,14 @@
-from flask import Flask, render_template, jsonify
-from flask_cors import CORS
-import sqlite3
+from __future__ import annotations
+
 import os
+import sqlite3
+from typing import Any
+
+from flask import Flask, jsonify, render_template
+from flask_cors import CORS
+
+from models.sources import normalize_article_source
+from services.article_service import resolve_articles_db_path
 from template_utils import safe_date
 
 app = Flask(__name__)
@@ -10,37 +17,51 @@ app.jinja_env.filters["safe_date"] = safe_date
 
 
 @app.context_processor
-def utility_processor():
+def utility_processor() -> dict[str, Any]:
     def static_url(path: str) -> str:
-        return app.url_for('static', filename=path)
+        return app.url_for("static", filename=path)
 
-    return {'static_url': static_url}
+    return {"static_url": static_url}
 
-def get_latest_articles(limit=10):
-    """
-    Fetch the latest articles from the 'articles' table,
-    sorted by date_added (descending), limited to 'limit' results.
-    """
+
+def _normalize_source_for_response(raw_source: str) -> str:
+    """Return canonical source names while preserving unknown legacy values safely."""
+    try:
+        return normalize_article_source(raw_source)
+    except ValueError:
+        return raw_source
+
+
+def get_latest_articles(limit: int = 10) -> list[dict[str, Any]]:
+    """Fetch latest articles sorted by date_added DESC."""
     db_path = resolve_articles_db_path()
+    if not os.path.exists(db_path):
+        return []
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    # Ensure your table is named 'articles' as in your scripts
-    cursor.execute('''
-        SELECT 
-            id, source, url, title, author, article_text,
-            core_thesis, detailed_abstract, supporting_data_quotes, date_added
-        FROM articles
-        ORDER BY date_added DESC
-        LIMIT ?
-    ''', (limit,))
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor.execute(
+            """
+            SELECT
+                id, source, url, title, author, article_text,
+                core_thesis, detailed_abstract, supporting_data_quotes, date_added
+            FROM articles
+            ORDER BY datetime(date_added) DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = cursor.fetchall()
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
 
-    articles = []
-    for row in rows:
-        articles.append({
+    return [
+        {
             "id": row[0],
-            "source": row[1],
+            "source": _normalize_source_for_response(row[1]),
             "url": row[2],
             "title": row[3],
             "author": row[4],
@@ -49,24 +70,27 @@ def get_latest_articles(limit=10):
             "detailed_abstract": row[7],
             "supporting_data_quotes": row[8],
             "date_added": row[9],
-        })
-    return articles
+        }
+        for row in rows
+    ]
 
-@app.route('/')
-def home():
-    """
-    Main route: Fetch and display the latest articles in a card-based layout.
-    Articles are sorted latest-first by date_added DESC.
-    """
+
+@app.get("/health")
+def health() -> Any:
+    return jsonify({"status": "healthy"})
+
+
+@app.get("/")
+def home() -> str:
     articles = get_latest_articles(limit=20)
-    return render_template('index.html', articles=articles)
+    return render_template("index.html", articles=articles)
 
 
-@app.route('/api/articles')
-def api_articles():
-    """Return latest articles in JSON format."""
+@app.get("/api/articles")
+def api_articles() -> Any:
     articles = get_latest_articles(limit=20)
     return jsonify(articles)
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
