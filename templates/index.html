@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Latest Summaries</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="stylesheet" href="{{ static_url('styles.css') }}">
 </head>
 <body>
   <div class="deck">
@@ -16,23 +16,7 @@
             <div class="card-title-container {{ 'fp-title' if article.source == 'Foreign Policy' else 'fa-title' }}">
               <h2 class="card-title">{{ article.title }}</h2>
               <p class="article-source">{{ article.source }} — {{ article.author }}</p>
-              <span class="article-date">{% set month_map = {
-                '01': 'January',
-                '02': 'February',
-                '03': 'March',
-                '04': 'April',
-                '05': 'May',
-                '06': 'June',
-                '07': 'July',
-                '08': 'August',
-                '09': 'September',
-                '10': 'October',
-                '11': 'November',
-                '12': 'December'
-              } %}
-              {% set date_text = article.date_added.split(' ')[0] %}
-              {% set parts = date_text.split('-') %}
-              {{ month_map[parts[1]] }} {{ parts[2].lstrip('0') }}</span>
+              <span class="article-date">{{ (article.publication_date if article.publication_date else article.date_added) | safe_date }}</span>
             </div>
             <div class="card-content">
               <p>{{ article.core_thesis }}</p>
@@ -43,23 +27,7 @@
             <div class="card-title-container {{ 'fp-title' if article.source == 'Foreign Policy' else 'fa-title' }}">
               <h2 class="card-title">{{ article.title }}</h2>
               <p class="article-source">{{ article.source }} — {{ article.author }}</p>
-              <span class="article-date">{% set month_map = {
-                '01': 'January',
-                '02': 'February',
-                '03': 'March',
-                '04': 'April',
-                '05': 'May',
-                '06': 'June',
-                '07': 'July',
-                '08': 'August',
-                '09': 'September',
-                '10': 'October',
-                '11': 'November',
-                '12': 'December'
-              } %}
-              {% set date_text = article.date_added.split(' ')[0] %}
-              {% set parts = date_text.split('-') %}
-              {{ month_map[parts[1]] }} {{ parts[2].lstrip('0') }}</span>
+              <span class="article-date">{{ (article.publication_date if article.publication_date else article.date_added) | safe_date }}</span>
             </div>
             <div class="card-content">
               <p>{{ article.detailed_abstract }}</p>
@@ -81,6 +49,6 @@
       </div>
     {% endfor %}
   </div>
-  <script src="{{ url_for('static', filename='script.js') }}"></script>
+  <script src="{{ static_url('script.js') }}"></script>
 </body>
 </html>
