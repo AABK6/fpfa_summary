@@ -1,11 +1,23 @@
 import sqlite3
 import os
+from pathlib import Path
 from typing import List
 from models.article import Article
 
+
+def resolve_articles_db_path() -> str:
+    """Resolve the SQLite DB path, allowing an env-var override for tests/CI."""
+    env_path = os.getenv("ARTICLES_DB_PATH")
+    if env_path:
+        return env_path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    return str(repo_root / "articles.db")
+
+
 class ArticleService:
-    def __init__(self, db_path: str = "articles.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str | None = None):
+        self.db_path = db_path or resolve_articles_db_path()
 
     def get_latest_articles(self, limit: int = 10) -> List[Article]:
         """

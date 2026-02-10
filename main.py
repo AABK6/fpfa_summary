@@ -5,7 +5,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from typing import List
 from models.article import Article
-from services.article_service import ArticleService
+from services.article_service import ArticleService, resolve_articles_db_path
 
 app = FastAPI(
     title="FPFA Summary API",
@@ -40,7 +40,7 @@ app.add_middleware(
 )
 
 def get_article_service():
-    return ArticleService()
+    return ArticleService(db_path=resolve_articles_db_path())
 
 @app.get("/health")
 async def health_check():
