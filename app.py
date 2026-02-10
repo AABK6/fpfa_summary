@@ -21,7 +21,7 @@ def get_latest_articles(limit=10):
     Fetch the latest articles from the 'articles' table,
     sorted by date_added (descending), limited to 'limit' results.
     """
-    db_path = os.path.join(os.path.dirname(__file__), 'articles.db')
+    db_path = resolve_articles_db_path()
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     # Ensure your table is named 'articles' as in your scripts
@@ -50,7 +50,6 @@ def get_latest_articles(limit=10):
             "supporting_data_quotes": row[8],
             "date_added": row[9],
         })
-    articles.reverse()  # Reverse the order to show latest
     return articles
 
 @app.route('/')

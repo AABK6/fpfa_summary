@@ -6,6 +6,8 @@ from google import genai
 from google.genai import types
 import os
 
+from models.sources import ArticleSource
+
 # ======= DATABASE IMPORTS AND FUNCTIONS (MINIMAL ADDITION) =======
 import sqlite3
 
@@ -338,7 +340,7 @@ def main():
             # Store in DB
             insert_article(
                 conn,
-                source="Foreign Policy",
+                source=ArticleSource.FOREIGN_POLICY.value,
                 url=article["url"],
                 title=article["title"],
                 author=article["author"],

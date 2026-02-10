@@ -2,24 +2,38 @@ import pytest
 
 import json
 
-def test_api_articles(client):
-    """
-    Test the /api/articles endpoint using the Flask test client.
-    """
-    response = client.get('/api/articles')
     assert response.status_code == 200
-    data = json.loads(response.data)
+    data = response.get_json()
     assert isinstance(data, list)
-    # Note: If the database is empty, this might fail. 
-    # In a real test, we would mock the database or use a test database.
-    # For now, we just check if it's a list.
-    assert len(data) >= 0
+    assert data, "Expected fixture-seeded results, got empty list"
+    assert REQUIRED_ARTICLE_KEYS.issubset(data[0].keys())
 
 
-def test_flask_home_page_renders(client):
-    """Test Flask home page renders without template/static URL errors."""
-    response = client.get('/')
+def test_flask_api_articles_deterministic_order_by_date_added(flask_client_with_db):
+    response = flask_client_with_db.get("/api/articles")
+    data = response.get_json()
+
+    # Flask app reverses SQL DESC order before returning; assert that behavior is deterministic.
+    assert [item["title"] for item in data] == ["Alpha", "Beta", "Gamma"]
+    assert [item["date_added"] for item in data] == sorted(item["date_added"] for item in data)
+
+
+def test_flask_api_articles_contract_url_serializable(flask_client_with_db):
+    response = flask_client_with_db.get("/api/articles")
+    data = response.get_json()
+
+    for item in data:
+        url = item["url"]
+        parsed = urlparse(url)
+        assert parsed.scheme in {"http", "https"}
+        assert parsed.netloc
+
+
+def test_flask_home_page_renders_key_content(flask_client_with_db):
+    response = flask_client_with_db.get("/")
+
     assert response.status_code == 200
+
     body = response.get_data(as_text=True)
     assert '<html' in body.lower()
     assert 'styles.css' in body

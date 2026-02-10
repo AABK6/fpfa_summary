@@ -42,7 +42,7 @@ app.add_middleware(
 )
 
 def get_article_service():
-    return ArticleService()
+    return ArticleService(db_path=resolve_articles_db_path())
 
 @app.get("/health")
 async def health_check():

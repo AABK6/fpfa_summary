@@ -1,19 +1,21 @@
-import pytest
-import sqlite3
 import os
-from httpx import AsyncClient, ASGITransport
+import sqlite3
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+
 from main import app, get_article_service
+from models.sources import ArticleSource
 from services.article_service import ArticleService
-from models.article import Article
 
 TEST_DB = "integration_test_articles.db"
 
+
 @pytest.fixture
 def integration_service():
-    # Setup: Create a temporary database for integration testing
     if os.path.exists(TEST_DB):
         os.remove(TEST_DB)
-        
+
     conn = sqlite3.connect(TEST_DB)
     conn.execute(
         """
@@ -34,37 +36,53 @@ def integration_service():
     conn.commit()
     conn.close()
 
-    service = ArticleService(db_path=TEST_DB)
-    return service
+    return ArticleService(db_path=TEST_DB)
+
 
 @pytest.mark.asyncio
 async def test_full_flow_scraper_to_api(integration_service):
-    # 1. Simulate Scraper: Insert an article directly into the DB
     conn = sqlite3.connect(TEST_DB)
-    conn.execute("""
-        INSERT INTO articles (source, url, title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes)
-        VALUES ('FA', 'https://test.com/integration', 'Integration Title', 'Author', 'Body', 'Thesis', 'Abstract', 'Quotes')
-    """)
+    conn.execute(
+        """
+        INSERT INTO articles (
+            source,
+            url,
+            title,
+            author,
+            article_text,
+            core_thesis,
+            detailed_abstract,
+            supporting_data_quotes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            ArticleSource.FOREIGN_AFFAIRS.value,
+            "https://test.com/integration",
+            "Integration Title",
+            "Author",
+            "Body",
+            "Thesis",
+            "Abstract",
+            "Quotes",
+        ),
+    )
     conn.commit()
     conn.close()
 
-    # 2. Configure app to use the integration database
     async def override_get_article_service():
         return integration_service
 
     app.dependency_overrides[get_article_service] = override_get_article_service
 
-    # 3. Call the API and verify the data
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/articles")
-    
+
     assert response.status_code == 200
     data = response.json()
     assert len(data) >= 1
     assert data[0]["title"] == "Integration Title"
-    assert data[0]["source"] == "FA"
+    assert data[0]["source"] == ArticleSource.FOREIGN_AFFAIRS.value
 
-    # Cleanup
     app.dependency_overrides.clear()
     if os.path.exists(TEST_DB):
         os.remove(TEST_DB)
