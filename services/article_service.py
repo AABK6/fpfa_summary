@@ -9,8 +9,9 @@ from models.sources import normalize_article_source
 
 
 def resolve_articles_db_path() -> str:
-    """Resolve the SQLite DB path, allowing an env-var override for tests/CI."""
-    env_path = os.getenv("ARTICLES_DB_PATH")
+    """Resolve the SQLite DB path with new and legacy env-var overrides."""
+    # Prefer the newer variable, but keep legacy compatibility.
+    env_path = os.getenv("ARTICLES_DB_PATH") or os.getenv("FPFA_DB_PATH")
     if env_path:
         return env_path
 
