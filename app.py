@@ -2,9 +2,11 @@ from flask import Flask, render_template, jsonify
 from flask_cors import CORS
 import sqlite3
 import os
+from template_utils import safe_date
 
 app = Flask(__name__)
 CORS(app)
+app.jinja_env.filters["safe_date"] = safe_date
 
 
 @app.context_processor

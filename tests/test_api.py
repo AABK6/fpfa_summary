@@ -1,3 +1,5 @@
+import pytest
+
 import json
 
 def test_api_articles(client):
@@ -21,3 +23,35 @@ def test_flask_home_page_renders(client):
     body = response.get_data(as_text=True)
     assert '<html' in body.lower()
     assert 'styles.css' in body
+
+
+@pytest.mark.parametrize(
+    "date_added, expected_display",
+    [
+        ("2023-01-01 12:34:56", "January 1"),
+        (None, "Unknown date"),
+        ("not-a-date", "Unknown date"),
+    ],
+)
+def test_flask_home_page_date_rendering(client, monkeypatch, date_added, expected_display):
+    """Flask template renders valid and fallback date text through safe_date filter."""
+    sample_articles = [
+        {
+            "id": 1,
+            "source": "Foreign Policy",
+            "url": "https://example.com/article",
+            "title": "Sample Title",
+            "author": "Sample Author",
+            "article_text": "Text",
+            "core_thesis": "Thesis",
+            "detailed_abstract": "Abstract",
+            "supporting_data_quotes": "Quote",
+            "date_added": date_added,
+        }
+    ]
+
+    monkeypatch.setattr("app.get_latest_articles", lambda limit=20: sample_articles)
+
+    response = client.get('/')
+    assert response.status_code == 200
+    assert expected_display in response.get_data(as_text=True)

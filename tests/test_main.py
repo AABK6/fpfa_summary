@@ -82,3 +82,37 @@ async def test_docs_accessible():
     assert response_redoc.status_code == 200
     assert response_openapi.status_code == 200
     assert "FPFA Summary API" in response_openapi.json()["info"]["title"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "date_added, expected_display",
+    [
+        ("2023-01-01 12:34:56", "January 1"),
+        (None, "Unknown date"),
+        ("not-a-date", "Unknown date"),
+    ],
+)
+async def test_root_html_date_rendering(date_added, expected_display):
+    mock_service = MagicMock()
+    mock_service.get_latest_articles.return_value = [
+        Article(
+            id=1, source="Test", url="https://test.com", title="Title 1", author="Author 1",
+            article_text="Text", core_thesis="Thesis", detailed_abstract="Abstract",
+            supporting_data_quotes="Quotes", date_added=date_added
+        )
+    ]
+
+    from main import get_article_service
+    async def override_get_article_service():
+        return mock_service
+
+    app.dependency_overrides[get_article_service] = override_get_article_service
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert expected_display in response.text
