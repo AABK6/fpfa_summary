@@ -11,6 +11,7 @@ class TestSummarizeFAHardened(unittest.TestCase):
             <body>
                 <h1 class="topper__title">Test Title</h1>
                 <h3 class="topper__byline">Test Author</h3>
+                <meta property="article:published_time" content="2024-01-01">
                 <article>
                     <p>Paragraph 1</p>
                     <p>Paragraph 2</p>
@@ -23,6 +24,7 @@ class TestSummarizeFAHardened(unittest.TestCase):
             self.assertEqual(result['title'], "Test Title")
             self.assertEqual(result['author'], "Test Author")
             self.assertIn("Paragraph 1", result['text'])
+            self.assertEqual(result['publication_date'], "2024-01-01")
 
     def test_extract_latest_article_urls(self):
         """Test extracting latest URLs for Foreign Affairs (Hardened)."""
@@ -57,6 +59,7 @@ class TestSummarizeFP(unittest.TestCase):
             <body>
                 <div class="hed-heading"><h1 class="hed">FP Title</h1></div>
                 <meta name="author" content="FP Author">
+                <meta property="article:published_time" content="2024-02-03">
                 <div class="content-ungated">
                     <p>FP Paragraph</p>
                 </div>
@@ -69,6 +72,7 @@ class TestSummarizeFP(unittest.TestCase):
         self.assertEqual(result['title'], "FP Title")
         self.assertEqual(result['author'], "FP Author")
         self.assertIn("FP Paragraph", result['text'])
+        self.assertEqual(result['publication_date'], "2024-02-03")
 
     @patch('requests.get')
     def test_scrape_fp_article_list(self, mock_get):

@@ -65,10 +65,16 @@ def init_db(db_path: str = DB_PATH):
             core_thesis TEXT,
             detailed_abstract TEXT,
             supporting_data_quotes TEXT,
+            publication_date TEXT,
             date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
+    cursor.execute("PRAGMA table_info(articles)")
+    column_names = {row[1] for row in cursor.fetchall()}
+    if "publication_date" not in column_names:
+        cursor.execute("ALTER TABLE articles ADD COLUMN publication_date TEXT")
+
     conn.commit()
     return conn
 
@@ -83,6 +89,7 @@ def insert_article(
     core_thesis,
     detailed_abstract,
     supporting_data_quotes,
+    publication_date=None,
 ):
     try:
         cursor = conn.cursor()
@@ -90,8 +97,8 @@ def insert_article(
             """
             INSERT INTO articles
             (source, url, title, author, article_text,
-             core_thesis, detailed_abstract, supporting_data_quotes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             core_thesis, detailed_abstract, supporting_data_quotes, publication_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 source,
@@ -102,6 +109,7 @@ def insert_article(
                 core_thesis,
                 detailed_abstract,
                 supporting_data_quotes,
+                publication_date,
             ),
         )
         conn.commit()
@@ -248,12 +256,22 @@ def extract_foreign_affairs_article(url: str) -> Dict[str, str] | None:
         text_parts = [p.get_text(strip=True) for p in article_body.find_all("p")]
         text = "\n\n".join(text_parts)
 
+    publication_date = None
+    published_meta = soup.find("meta", attrs={"property": "article:published_time"})
+    if published_meta and published_meta.get("content"):
+        publication_date = published_meta["content"].strip()
+    else:
+        time_tag = soup.find("time")
+        if time_tag:
+            publication_date = (time_tag.get("datetime") or time_tag.get_text(strip=True) or None)
+
     return {
         "title": title,
         "subtitle": subtitle,
         "author": author,
         "text": text,
         "url": url,
+        "publication_date": publication_date,
     }
 
 
@@ -342,6 +360,7 @@ def main():
             core_thesis=core,
             detailed_abstract=abstract,
             supporting_data_quotes=quotes,
+            publication_date=article.get("publication_date"),
         )
         print(f"[OK] Stored summary for {article['title']}")
 

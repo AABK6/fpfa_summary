@@ -31,15 +31,24 @@ class ArticleService:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         try:
+            cursor.execute("PRAGMA table_info(articles)")
+            available_columns = {row[1] for row in cursor.fetchall()}
+            publication_date_expr = (
+                "publication_date"
+                if "publication_date" in available_columns
+                else "NULL AS publication_date"
+            )
+
             cursor.execute(
                 """
                 SELECT
                     id, source, url, title, author, article_text,
-                    core_thesis, detailed_abstract, supporting_data_quotes, date_added
+                    core_thesis, detailed_abstract, supporting_data_quotes,
+                    {publication_date_expr}, date_added
                 FROM articles
                 ORDER BY datetime(date_added) DESC
                 LIMIT ?
-                """,
+                """.format(publication_date_expr=publication_date_expr),
                 (limit,),
             )
             rows = cursor.fetchall()

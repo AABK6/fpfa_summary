@@ -30,14 +30,20 @@ def init_db(db_path="articles.db"):
             core_thesis TEXT,
             detailed_abstract TEXT,
             supporting_data_quotes TEXT,
+            publication_date TEXT,
             date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    cursor.execute("PRAGMA table_info(articles)")
+    column_names = {row[1] for row in cursor.fetchall()}
+    if "publication_date" not in column_names:
+        cursor.execute("ALTER TABLE articles ADD COLUMN publication_date TEXT")
+
     conn.commit()
     return conn
 
 def insert_article(conn, source, url, title, author, article_text,
-                   core_thesis, detailed_abstract, supporting_data_quotes):
+                   core_thesis, detailed_abstract, supporting_data_quotes, publication_date=None):
     """
     Inserts an article into the database table 'articles'.
     Skips if the URL is already present (UNIQUE constraint).
@@ -47,10 +53,10 @@ def insert_article(conn, source, url, title, author, article_text,
         cursor.execute('''
             INSERT INTO articles
             (source, url, title, author, article_text,
-             core_thesis, detailed_abstract, supporting_data_quotes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             core_thesis, detailed_abstract, supporting_data_quotes, publication_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (source, url, title, author, article_text,
-              core_thesis, detailed_abstract, supporting_data_quotes))
+              core_thesis, detailed_abstract, supporting_data_quotes, publication_date))
         conn.commit()
         print(f"Inserted article into DB: {title}")
     except sqlite3.IntegrityError:
@@ -138,10 +144,20 @@ def scrape_foreignpolicy_article(url):
 
     article_body = "\n\n".join(content_parts)
 
+    publication_date = None
+    published_meta = soup.find("meta", attrs={"property": "article:published_time"})
+    if published_meta and published_meta.get("content"):
+        publication_date = published_meta["content"].strip()
+    else:
+        time_tag = soup.find("time")
+        if time_tag:
+            publication_date = (time_tag.get("datetime") or time_tag.get_text(strip=True) or None)
+
     return {
         "title": title,
         "author": author,
-        "text": article_body
+        "text": article_body,
+        "publication_date": publication_date,
     }
 
 def scrape_foreignpolicy_article_list(num_links=3):
@@ -347,7 +363,8 @@ def main():
                 article_text=article["text"],  # Storing full text
                 core_thesis=core_thesis,
                 detailed_abstract=detailed_abstract,
-                supporting_data_quotes=supporting_data_quotes
+                supporting_data_quotes=supporting_data_quotes,
+                publication_date=article.get("publication_date"),
             )
 
     conn.close()

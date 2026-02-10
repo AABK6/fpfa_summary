@@ -25,6 +25,7 @@ def article_service():
             core_thesis TEXT,
             detailed_abstract TEXT,
             supporting_data_quotes TEXT,
+            publication_date TEXT,
             date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -40,8 +41,9 @@ def article_service():
             core_thesis,
             detailed_abstract,
             supporting_data_quotes,
+            publication_date,
             date_added
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
@@ -53,6 +55,7 @@ def article_service():
                 "Thesis 1",
                 "Abstract 1",
                 "Quotes 1",
+                "2022-12-25",
                 "2023-01-01 10:00:00",
             ),
             (
@@ -64,6 +67,7 @@ def article_service():
                 "Thesis 2",
                 "Abstract 2",
                 "Quotes 2",
+                None,
                 "2023-01-02 10:00:00",
             ),
         ],
@@ -100,3 +104,10 @@ def test_get_latest_articles_empty_db():
     service = ArticleService(db_path=TEST_DB)
     articles = service.get_latest_articles()
     assert articles == []
+
+
+def test_get_latest_articles_includes_publication_date(article_service):
+    articles = article_service.get_latest_articles(limit=10)
+
+    assert articles[1].publication_date == "2022-12-25"
+    assert articles[0].publication_date is None
