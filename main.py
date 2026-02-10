@@ -5,7 +5,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from typing import List
 from models.article import Article
-from services.article_service import ArticleService, resolve_articles_db_path
+from services.article_service import ArticleService
+from template_utils import safe_date
 
 app = FastAPI(
     title="FPFA Summary API",
@@ -23,6 +24,7 @@ def static_url(path: str) -> str:
 
 
 templates.env.globals["static_url"] = static_url
+templates.env.filters["safe_date"] = safe_date
 
 # Configure CORS
 origins = [
