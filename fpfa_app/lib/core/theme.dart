@@ -13,7 +13,7 @@ class AppTheme {
     return ThemeData(
       primarySwatch: Colors.blue,
       scaffoldBackgroundColor: scaffoldBackground,
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: cardBackground,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
