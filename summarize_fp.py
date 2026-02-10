@@ -235,6 +235,15 @@ def scrape_foreignpolicy_article(url):
         if time_tag:
             publication_date = (time_tag.get("datetime") or time_tag.get_text(strip=True) or None)
 
+    publication_date = None
+    published_meta = soup.find("meta", attrs={"property": "article:published_time"})
+    if published_meta and published_meta.get("content"):
+        publication_date = published_meta["content"].strip()
+    else:
+        time_tag = soup.find("time")
+        if time_tag:
+            publication_date = (time_tag.get("datetime") or time_tag.get_text(strip=True) or None)
+
     return {
         "title": title,
         "author": author,
