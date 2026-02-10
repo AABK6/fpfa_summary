@@ -72,6 +72,15 @@ Endpoints:
 - Flask: `http://localhost:5000/api/articles`
 - FastAPI: `http://localhost:8000/api/articles`
 
+### Backend behavior
+
+Canonical article ordering policy: **newest first**.
+
+- Both Flask (`app.py`) and FastAPI (`main.py` via `services/article_service.py`) return `/api/articles`
+  sorted by `date_added DESC`.
+- The first item in API responses (and the first rendered card in the HTML template) is the
+  most recently added article.
+
 ## Run the Flutter app
 
 From `fpfa_app/`:
