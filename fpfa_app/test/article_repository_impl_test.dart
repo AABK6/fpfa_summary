@@ -112,8 +112,8 @@ void main() {
         localDataSource: localDataSource,
       );
 
-      expect(
-        () => repository.getLatestArticles(limit: 20),
+      await expectLater(
+        repository.getLatestArticles(limit: 20),
         throwsA(
           isA<Exception>().having(
             (e) => e.toString(),
