@@ -74,6 +74,34 @@ class TestSummarizeFP(unittest.TestCase):
         self.assertIn("FP Paragraph", result['text'])
         self.assertEqual(result['publication_date'], "2024-02-03")
 
+
+
+    @patch('requests.get')
+    def test_scrape_fp_article_fallback_collects_fuller_body(self, mock_get):
+        """Falls back to generic article container if ungated/gated wrappers are absent."""
+        mock_response = MagicMock()
+        mock_response.text = """
+        <html>
+            <body>
+                <div class="hed-heading"><h1 class="hed">Fallback Title</h1></div>
+                <meta name="author" content="Fallback Author">
+                <article>
+                    <p>Paragraph one has substantial policy analysis content.</p>
+                    <p>Paragraph two extends the argument with historical context.</p>
+                    <p>Read more from Foreign Policy newsletters</p>
+                </article>
+            </body>
+        </html>
+        """
+        mock_get.return_value = mock_response
+
+        result = summarize_fp.scrape_foreignpolicy_article("http://test-fp-fallback.com")
+        self.assertEqual(result['title'], "Fallback Title")
+        self.assertEqual(result['author'], "Fallback Author")
+        self.assertIn("substantial policy analysis", result['text'])
+        self.assertIn("historical context", result['text'])
+        self.assertNotIn("Read more", result['text'])
+
     @patch('requests.get')
     def test_scrape_fp_article_list(self, mock_get):
         """Test extracting article list for Foreign Policy."""
