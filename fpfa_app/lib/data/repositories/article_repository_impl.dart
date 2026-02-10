@@ -18,9 +18,13 @@ class ArticleRepositoryImpl implements ArticleRepository {
       final remoteArticles = await remoteDataSource.getLatestArticles(limit: limit);
       await localDataSource.cacheArticles(remoteArticles);
       return remoteArticles;
-    } catch (e) {
-      // Fallback to local cache if remote fails
-      return await localDataSource.getLastArticles();
+    } catch (e, stackTrace) {
+      // Use cache only when it has data; otherwise surface the fetch failure.
+      final cachedArticles = await localDataSource.getLastArticles();
+      if (cachedArticles.isNotEmpty) {
+        return cachedArticles;
+      }
+      Error.throwWithStackTrace(e, stackTrace);
     }
   }
 }
