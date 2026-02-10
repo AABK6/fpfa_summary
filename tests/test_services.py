@@ -80,10 +80,12 @@ def article_service():
 
 def test_get_latest_articles(article_service):
     articles = article_service.get_latest_articles(limit=10)
+
     assert len(articles) == 2
     assert articles[0].title == "Title 2"
     assert articles[1].title == "Title 1"
     assert isinstance(articles[0], Article)
+    assert [article.title for article in articles] == ["Title 2", "Title 1"]
 
 
 def test_get_latest_articles_empty_db():
