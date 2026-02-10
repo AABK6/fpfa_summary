@@ -136,7 +136,7 @@ async def test_root_html_date_rendering(date_added, expected_display):
     mock_service = MagicMock()
     mock_service.get_latest_articles.return_value = [
         Article(
-            id=1, source="Test", url="https://test.com", title="Title 1", author="Author 1",
+            id=1, source="Foreign Policy", url="https://test.com", title="Title 1", author="Author 1",
             article_text="Text", core_thesis="Thesis", detailed_abstract="Abstract",
             supporting_data_quotes="Quotes", date_added=date_added
         )

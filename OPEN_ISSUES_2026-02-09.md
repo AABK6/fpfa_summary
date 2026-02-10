@@ -2,6 +2,15 @@
 
 This backlog converts the remaining work from `SESSION_HANDOFF_2026-02-09.md` into trackable issues.
 
+## Latest execution status (2026-02-10)
+
+- ISSUE-02 (FA live ingestion): **partially validated** (URL extraction works), full summarize/insert blocked by missing `GEMINI_API_KEY` in runtime env.
+- ISSUE-03 (FA Playwright fallback): **still open** due environment TLS trust failure (`ERR_CERT_AUTHORITY_INVALID`) during Playwright navigation.
+- ISSUE-04 (FP live ingestion): **partially validated** (article scraping works), full summarize/insert blocked by missing `GEMINI_API_KEY` in runtime env.
+- ISSUE-05 (Backend runtime smoke): **completed** in this environment (`/health`, `/api/articles`, `/` verified on Flask/FastAPI).
+- ISSUE-06 (Flutter validation): **still open** (`flutter` CLI unavailable in this environment).
+
+
 ## Priority P0 (blockers for “fully stable”)
 
 ### [ ] ISSUE-01: Validate scheduled ingestion health in GitHub Actions
@@ -71,7 +80,7 @@ This backlog converts the remaining work from `SESSION_HANDOFF_2026-02-09.md` in
 
 ## Priority P1 (high-value follow-ups)
 
-### [ ] ISSUE-05: Backend runtime smoke on non-sandbox machine
+### [x] ISSUE-05: Backend runtime smoke on non-sandbox machine
 
 **Goal**
 - Validate runtime behavior beyond unit/integration tests.
