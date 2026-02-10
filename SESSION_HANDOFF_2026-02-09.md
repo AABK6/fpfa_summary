@@ -149,3 +149,29 @@ export GEMINI_API_KEY=...
 python summarize_fa_hardened.py 7
 python summarize_fp.py 7
 ```
+
+---
+
+## Addendum (2026-02-10 follow-up execution)
+
+A follow-up execution pass was run to advance outstanding items.
+
+### Completed in this pass
+
+- Backend runtime smoke succeeded for both servers:
+  - Flask: `/health`, `/api/articles`
+  - FastAPI: `/health`, `/api/articles`, `/`
+- Test suite still passing:
+  - `pytest tests -q` → `29 passed`
+
+### Still blocked / partial
+
+- `python summarize_fa_hardened.py 3` still exits immediately when `GEMINI_API_KEY` is missing.
+- `python summarize_fp.py 3` still scrapes live URLs/content but cannot summarize/insert without `GEMINI_API_KEY`.
+- Playwright fallback path for FA could not be fully validated because browser navigation in this environment returns `ERR_CERT_AUTHORITY_INVALID` for Foreign Affairs HTTPS pages.
+- Flutter checks remain blocked because `flutter` CLI is unavailable in this environment.
+
+### Net status impact
+
+- P1 backend runtime smoke is now verified.
+- P0 ingestion items remain open until a runtime with valid Gemini key + stable TLS trust is used for full end-to-end summarize/insert verification.

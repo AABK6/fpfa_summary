@@ -115,6 +115,19 @@ Removed obsolete experimental files:
 - `testvpn.py` (contained hardcoded proxy credentials and was not part of production flow)
 - `test_scraping_methods.py` (manual exploratory script, not part of CI/production)
 
+
+## Latest verification snapshot (2026-02-10)
+
+A follow-up validation pass was run after backend hardening changes:
+
+- Backend tests: `pytest tests -q` → **29 passed**.
+- Flask runtime smoke: `/health` and `/api/articles` responded successfully.
+- FastAPI runtime smoke: `/health`, `/api/articles`, and `/` responded successfully.
+- FA/FP live ingestion scripts were re-tried, but full summarize+insert remains blocked without
+  `GEMINI_API_KEY` available in the runtime environment.
+- FA Playwright fallback could not be fully validated in this environment due browser navigation
+  TLS trust error (`ERR_CERT_AUTHORITY_INVALID`) when accessing Foreign Affairs over HTTPS.
+
 ## Session handoff and open issues
 
 Latest detailed audit/handoff:
