@@ -202,6 +202,7 @@ def test_flask_home_page_renders_key_content(flask_client_with_db):
     response = flask_client_with_db.get("/")
 
     assert response.status_code == 200
+
     body = response.get_data(as_text=True)
     assert '<div class="deck">' in body
     assert "Alpha" in body
