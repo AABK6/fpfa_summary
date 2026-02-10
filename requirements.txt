@@ -4,6 +4,7 @@ attrs==25.4.0
 beautifulsoup4==4.14.3
 blinker==1.9.0
 bs4==0.0.2
+lxml
 cachetools==6.2.4
 certifi==2026.1.4
 charset-normalizer==3.4.4
