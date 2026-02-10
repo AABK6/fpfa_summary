@@ -16,7 +16,7 @@
             <div class="card-title-container {{ 'fp-title' if article.source == 'Foreign Policy' else 'fa-title' }}">
               <h2 class="card-title">{{ article.title }}</h2>
               <p class="article-source">{{ article.source }} — {{ article.author }}</p>
-              <span class="article-date">{{ article.date_added | safe_date }}</span>
+              <span class="article-date">{{ (article.publication_date if article.publication_date else article.date_added) | safe_date }}</span>
             </div>
             <div class="card-content">
               <p>{{ article.core_thesis }}</p>
@@ -27,7 +27,7 @@
             <div class="card-title-container {{ 'fp-title' if article.source == 'Foreign Policy' else 'fa-title' }}">
               <h2 class="card-title">{{ article.title }}</h2>
               <p class="article-source">{{ article.source }} — {{ article.author }}</p>
-              <span class="article-date">{{ article.date_added | safe_date }}</span>
+              <span class="article-date">{{ (article.publication_date if article.publication_date else article.date_added) | safe_date }}</span>
             </div>
             <div class="card-content">
               <p>{{ article.detailed_abstract }}</p>

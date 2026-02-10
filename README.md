@@ -76,6 +76,7 @@ Endpoints:
 
 Canonical article ordering policy: **newest first**.
 
+- APIs now expose optional `publication_date` when available from source pages; UI date display prefers publication date and falls back to ingestion timestamp (`date_added`).
 - Both Flask (`app.py`) and FastAPI (`main.py` via `services/article_service.py`) return `/api/articles`
   sorted by `date_added DESC`.
 - The first item in API responses (and the first rendered card in the HTML template) is the
