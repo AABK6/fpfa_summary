@@ -82,3 +82,13 @@ async def test_docs_accessible():
     assert response_redoc.status_code == 200
     assert response_openapi.status_code == 200
     assert "FPFA Summary API" in response_openapi.json()["info"]["title"]
+
+
+def test_get_article_service_uses_env_override(monkeypatch, tmp_path):
+    from main import get_article_service
+
+    custom_db = tmp_path / "main_override.db"
+    monkeypatch.setenv("ARTICLES_DB_PATH", str(custom_db))
+
+    service = get_article_service()
+    assert service.db_path == str(custom_db)

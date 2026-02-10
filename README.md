@@ -59,6 +59,14 @@ pip install -r requirements.txt
 python main.py
 ```
 
+Optional DB path override (useful in CI/tests or nonstandard runtime layouts):
+
+```bash
+ARTICLES_DB_PATH=/absolute/path/to/articles.db python main.py
+# or
+ARTICLES_DB_PATH=/absolute/path/to/articles.db python app.py
+```
+
 Endpoints:
 
 - Flask: `http://localhost:5000/api/articles`
