@@ -1,0 +1,145 @@
+Backend Refactor Notes and Fix Plan (Backend-Only)
+=================================================
+
+Scope
+-----
+- Backend only: Python/Flask API, scraping/summarization scripts, SQLite DB.
+- Keep existing `/api/articles` response shape for clients (Flutter/React untouched).
+- Consolidate and harden scraping + summarization, introduce clear layering, add tests.
+
+Current Workflow (Observed)
+---------------------------
+- Data creation lives across three scripts:
+  - `summarize_fa.py` (Foreign Affairs via Selenium/UDC; unreliable under Cloudflare).
+  - `summarize_fp.py` (Foreign Policy via Requests+BS4; simpler and mostly stable).
+  - `summarize_fa_hardened.py` (prototype using Playwright + stealth; not integrated).
+- Flask app (`app.py`) reads from `articles.db` with ad‑hoc SQL and serves `/` + `/api/articles`.
+- Frontend(s) parse quotes from `supporting_data_quotes` using `*` delimiter and format dates client-side.
+
+Issues Identified (Backend Scope)
+---------------------------------
+1) Duplication and coupling
+   - DB helpers, prompts, and scraping logic are duplicated across scripts.
+   - Each script performs discovery → fetch → LLM → persist end-to-end, making reuse and testing difficult.
+
+2) Foreign Affairs scraper is currently broken/unreliable
+   - Selenium/undetected-chromedriver path loops on Cloudflare and depends on cookie juggling.
+   - The working approach is prototyped in `fa_minimal.py`, but it is not integrated into the main workflow.
+
+3) Inconsistent scraping approaches
+   - Anti-bot handling, retries, and timeouts are spread ad hoc and are not centrally configured.
+
+4) Data model rough edges
+   - `supporting_data_quotes` stores a `*`-delimited string, requiring UI-side parsing and creating ambiguity.
+   - No explicit index on `date_added` for fast "latest" queries.
+
+5) API structure and config
+   - Flask app is a single module; no app factory/blueprints, which limits testing and extensibility.
+   - Config (API keys, DB path, retry/model choices) is scattered or implicit.
+
+6) Testing and reliability
+   - Tests and utilities hit live network and external sites; flakey and slow.
+   - No unit tests for HTML parsing; limited ability to validate parser changes safely.
+
+Consequences
+------------
+- Fragile ingestion (especially FA), duplicated maintenance, higher chance of regressions.
+- Harder to add features (pagination/filters) or swap summarization models.
+- API stability depends on manual discipline rather than structure.
+
+Fix Proposals (Backend)
+-----------------------
+1) Introduce a proper backend package `fpfa/` with clear modules
+   - `config.py`: all environment-driven settings (DB path, model IDs, timeouts, retry counts).
+   - `models.py`: internal `Article` model (dataclass or Pydantic) to carry parsed data.
+   - `db/schema.py`: DDL bootstrap (including indexes), schema evolution helpers.
+   - `db/repo.py`: `ArticleRepository` with CRUD/get-latest (hides SQL, enforces uniqueness on URL).
+   - `scrapers/`: `base.py` interface; concrete `foreign_affairs.py` and `foreign_policy.py`.
+   - `summarizers/`: `base.py` interface + `gemini.py` implementation (google-genai).
+   - `pipeline.py`: orchestrates discover → dedupe → fetch → summarize → persist (idempotent, logged).
+   - `api/`: app factory, blueprint(s), and serializers for consistent outputs.
+   - `cli.py`: Typer/Click CLI to run crawl/pipeline/migrations.
+
+2) Foreign Affairs: replicate the lean, working FA fetch method from fa_minimal.py and integrate it
+   - Note: the current FA scraper path is broken; the lean and working approach is implemented in
+     `fa_minimal.py` (Requests + BeautifulSoup, no JS/AJAX). We will port this logic into
+     `fpfa.scrapers.foreign_affairs`.
+   - HTTP session: realistic Chrome UA, sane Accept/Language headers.
+   - Implement `list_urls(limit)` with Requests+BS4 on the FA list page, and `fetch_article(url)` using
+     the above extraction; reuse the `extract_title_author` helper from `fa_fetch_min.py`.
+   - Check DB for existing URLs before fetching/summarizing to avoid unnecessary network calls.
+
+3) Foreign Policy: keep Requests+BS4, add shared anti-bot/retry policy
+   - Maintain current selectors; add limited retries and timeouts via shared helper.
+   - Detect obvious anti-bot interstitials and fail soft (skip or retry within bounds).
+
+4) Summarization strategy
+   - Define `SummaryGenerator` interface with `core_thesis()`, `detailed_abstract()`, `supporting_quotes()`.
+   - Provide `GeminiSummaryGenerator` (google-genai), with model names configurable in `config.py`.
+   - Consolidate and de-duplicate prompt text in one place; handle SDK errors with clear fallbacks.
+
+5) Data model & migration
+   - Keep existing columns; add index: `CREATE INDEX IF NOT EXISTS idx_articles_date ON articles(date_added DESC)`.
+   - Add optional `quotes_json` column (TEXT) to store quotes as JSON array.
+   - Migration script: read legacy `supporting_data_quotes`, split on `*`, write JSON to `quotes_json`.
+   - Dual-write going forward (keep legacy field populated to avoid breaking clients).
+
+6) API structure (no breaking changes)
+   - Move to Flask app factory + Blueprints (e.g., `GET /api/articles`).
+   - Keep response fields unchanged; optionally support `limit`/`offset` and `source` filter.
+   - Centralize serialization (date formatting and optional quotes normalization remain server-side, but
+     the legacy fields continue to be emitted so clients are unaffected).
+
+7) CLI and legacy script compatibility
+   - New CLI: `fpfa crawl fa|fp`, `fpfa run --sources fa,fp --limit N`, `fpfa migrate quotes-json`.
+   - Keep `summarize_fa.py` and `summarize_fp.py` as thin wrappers that delegate into the new pipeline; mark deprecated.
+
+8) Testing
+   - Unit tests for parsers using fixtures: `tests/fixtures/fa_list.html`, `fa_article.html`, `fp_list.html`, `fp_article.html`.
+   - Summarizer tests via a stub generator (no network).
+   - API tests through Flask test client against a temp SQLite DB.
+   - Integration test: pipeline run with stubbed summarizer + fixture fetchers; verify idempotence.
+
+Incremental Implementation Plan
+-------------------------------
+Phase 1: Package skeleton and API wiring
+- Add `fpfa/` with `config.py`, `db/schema.py`, `db/repo.py`, `api/app.py` (factory) and `api/routes.py`.
+- Update top-level `app.py` to import and run `create_app()`; keep routes/JSON shape identical.
+
+Phase 2: Scrapers refactor (include FA fetch replication)
+- Implement `fpfa.scrapers.base` interface and shared retry/anti-bot helpers.
+- Foreign Affairs: replicate the working Playwright-based fetch from `summarize_fa_hardened.py` and integrate as the default FA scraper.
+- Foreign Policy: move existing Requests+BS4 into `fpfa.scrapers.foreign_policy`, add shared headers/timeouts/retries.
+- Update legacy scripts to delegate discovery/fetch to these scrapers.
+
+Phase 3: Summarizer consolidation
+- Implement `SummaryGenerator` + `GeminiSummaryGenerator` and unify prompts.
+- Wire legacy scripts to call the generator; handle failures with placeholders.
+
+Phase 4: Pipeline + CLI
+- Build `pipeline.py` for discover → dedupe → fetch → summarize → persist with logging.
+- Add `cli.py` commands: crawl/run/migrate; switch legacy scripts to call the pipeline.
+
+Phase 5: DB migration and dual-write for quotes
+- Add `quotes_json` column and backfill from legacy `supporting_data_quotes`.
+- Repository performs dual-write; API remains unchanged for clients.
+
+Phase 6: Tests and fixtures
+- Add parser fixtures and unit tests; replace live-network tests with CI-friendly ones.
+- Add API tests with Flask test client and a temp DB.
+
+Risks & Mitigations
+-------------------
+- Site changes on ForeignAffairs: `fa_fetch_min.py` relies on server-rendered `paywall-content` containers
+  and a density-based fallback. If markup changes or content requires AJAX/JSON, we may need to extend the
+  scraper with the richer strategies from `fa_fetch.py` (AJAX/JSON-LD/AMP layers). Keep modules structured
+  so upgrading the extractor is easy.
+- Subscriber-only content: since the minimal approach does not pass cookies or call AJAX endpoints, consider
+  optional cookie support in config/CLI when needed.
+- Schema changes: keep migration idempotent; back up DB before running in production.
+- LLM cost/latency: support a stub summarizer and a `--dry-run` pipeline mode.
+
+Reviewer Action Items
+---------------------
+- Confirm acceptance of: package layout, FA scraper replication plan, quotes JSON dual-write approach, and CLI surface.
+- Confirm we keep the current API response shape intact during refactor.

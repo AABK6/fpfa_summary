@@ -6,8 +6,12 @@ from google import genai
 from google.genai import types
 import os
 
+from models.sources import ArticleSource
+
 # ======= DATABASE IMPORTS AND FUNCTIONS (MINIMAL ADDITION) =======
 import sqlite3
+
+ALLOW_TRUNCATED_CONTENT = os.getenv("ALLOW_TRUNCATED_CONTENT", "0") == "1"
 
 def init_db(db_path="articles.db"):
     """
@@ -28,14 +32,20 @@ def init_db(db_path="articles.db"):
             core_thesis TEXT,
             detailed_abstract TEXT,
             supporting_data_quotes TEXT,
+            publication_date TEXT,
             date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    cursor.execute("PRAGMA table_info(articles)")
+    column_names = {row[1] for row in cursor.fetchall()}
+    if "publication_date" not in column_names:
+        cursor.execute("ALTER TABLE articles ADD COLUMN publication_date TEXT")
+
     conn.commit()
     return conn
 
 def insert_article(conn, source, url, title, author, article_text,
-                   core_thesis, detailed_abstract, supporting_data_quotes):
+                   core_thesis, detailed_abstract, supporting_data_quotes, publication_date=None):
     """
     Inserts an article into the database table 'articles'.
     Skips if the URL is already present (UNIQUE constraint).
@@ -45,10 +55,10 @@ def insert_article(conn, source, url, title, author, article_text,
         cursor.execute('''
             INSERT INTO articles
             (source, url, title, author, article_text,
-             core_thesis, detailed_abstract, supporting_data_quotes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             core_thesis, detailed_abstract, supporting_data_quotes, publication_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (source, url, title, author, article_text,
-              core_thesis, detailed_abstract, supporting_data_quotes))
+              core_thesis, detailed_abstract, supporting_data_quotes, publication_date))
         conn.commit()
         print(f"Inserted article into DB: {title}")
     except sqlite3.IntegrityError:
@@ -68,6 +78,95 @@ def get_article_by_url(conn, url):
         WHERE url = ?
     ''', (url,))
     return cursor.fetchone()
+
+
+
+def _normalize_paragraph_text(raw_text: str) -> str:
+    text = re.sub(r"\s+", " ", raw_text).strip()
+    if not text:
+        return ""
+
+    lower_text = text.lower()
+    skip_markers = (
+        "read more",
+        "sign up",
+        "newsletter",
+        "advertisement",
+        "most read",
+        "podcast",
+    )
+    if any(marker in lower_text for marker in skip_markers):
+        return ""
+
+    return text
+
+
+def _collect_paragraphs(container) -> list[str]:
+    seen = set()
+    cleaned_paragraphs: list[str] = []
+    for paragraph in container.find_all("p"):
+        candidate = _normalize_paragraph_text(paragraph.get_text(" ", strip=True))
+        if not candidate:
+            continue
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        cleaned_paragraphs.append(candidate)
+    return cleaned_paragraphs
+
+
+def _extract_fp_article_body(soup: BeautifulSoup) -> str:
+    content_selectors = [
+        "div.content-ungated",
+        "div.content-gated--main-article",
+        "article .article-content",
+        "article",
+        "main",
+    ]
+
+    for selector in content_selectors:
+        container = soup.select_one(selector)
+        if not container:
+            continue
+
+        paragraphs = _collect_paragraphs(container)
+        if len(" ".join(paragraphs)) >= 400:
+            return "\n\n".join(paragraphs)
+
+    # Last-resort fallback: any paragraphs in the page, filtered + deduplicated.
+    fallback_paragraphs = _collect_paragraphs(soup)
+    return "\n\n".join(fallback_paragraphs)
+
+
+def _fetch_html_via_playwright(url: str) -> str | None:
+    """Optional JS-rendered fallback for pages where requests returns truncated HTML."""
+    try:
+        from playwright.sync_api import sync_playwright, TimeoutError as PWTimeoutError
+    except Exception:
+        return None
+
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage"],
+            )
+            context = browser.new_context()
+            page = context.new_page()
+            page.goto(url, wait_until="networkidle", timeout=30000)
+            html = page.content()
+            browser.close()
+            return html
+    except PWTimeoutError:
+        return None
+    except Exception:
+        return None
+
+
+def _is_likely_truncated(article_body: str) -> bool:
+    paragraphs = [p for p in article_body.split("\n\n") if p.strip()]
+    return len(article_body) < 900 and len(paragraphs) < 3
+
 
 """
 Usage:
@@ -117,29 +216,40 @@ def scrape_foreignpolicy_article(url):
         else:
             author = "No Author Found"
 
-    content_parts = []
-    ungated = soup.select_one("div.content-ungated")
-    if ungated:
-        paragraphs = ungated.find_all("p")
-        for p in paragraphs:
-            text = p.get_text(strip=True)
-            if text:
-                content_parts.append(text)
+    article_body = _extract_fp_article_body(soup)
 
-    gated = soup.select_one("div.content-gated--main-article")
-    if gated:
-        paragraphs = gated.find_all("p")
-        for p in paragraphs:
-            text = p.get_text(strip=True)
-            if text:
-                content_parts.append(text)
+    if _is_likely_truncated(article_body):
+        rendered_html = _fetch_html_via_playwright(url)
+        if rendered_html:
+            rendered_soup = BeautifulSoup(rendered_html, "html.parser")
+            rendered_body = _extract_fp_article_body(rendered_soup)
+            if len(rendered_body) > len(article_body):
+                article_body = rendered_body
 
-    article_body = "\n\n".join(content_parts)
+    publication_date = None
+    published_meta = soup.find("meta", attrs={"property": "article:published_time"})
+    if published_meta and published_meta.get("content"):
+        publication_date = published_meta["content"].strip()
+    else:
+        time_tag = soup.find("time")
+        if time_tag:
+            publication_date = (time_tag.get("datetime") or time_tag.get_text(strip=True) or None)
+
+    publication_date = None
+    published_meta = soup.find("meta", attrs={"property": "article:published_time"})
+    if published_meta and published_meta.get("content"):
+        publication_date = published_meta["content"].strip()
+    else:
+        time_tag = soup.find("time")
+        if time_tag:
+            publication_date = (time_tag.get("datetime") or time_tag.get_text(strip=True) or None)
 
     return {
         "title": title,
         "author": author,
-        "text": article_body
+        "text": article_body,
+        "publication_date": publication_date,
+        "content_warning": "possibly_truncated" if _is_likely_truncated(article_body) else None,
     }
 
 def scrape_foreignpolicy_article_list(num_links=3):
@@ -200,7 +310,7 @@ def generate_core_thesis(client: genai.Client, article: dict) -> str:
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-flash-latest',
             contents=prompt
         )
         return response.text.strip()
@@ -224,7 +334,7 @@ def generate_detailed_abstract(client: genai.Client, article: dict) -> str:
     """
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash-preview-05-20',
+            model='gemini-flash-latest',
             contents=prompt
         )
         return response.text.strip()
@@ -250,7 +360,7 @@ def generate_supporting_data_quotes(client: genai.Client, article: dict) -> str:
     """
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash-preview-05-20',
+            model='gemini-flash-latest',
             contents=prompt
         )
         return response.text.strip()
@@ -289,12 +399,17 @@ def main():
         if article_data:
             # Attach the URL to the data so we can store and check it
             article_data["url"] = url
+            if article_data.get("content_warning"):
+                print(f"[WARN] Extracted content may be truncated for URL: {url}")
+                if not ALLOW_TRUNCATED_CONTENT:
+                    print(f"[SKIP] Skipping potentially truncated article: {url}")
+                    continue
             articles_data.append(article_data)
         else:
             print(f"Failed to scrape article from: {url}")
 
     if not articles_data:
-        print("No article data scraped successfully. Exiting.")
+        print("No article data eligible for summarization (scrape failure or truncation guard). Exiting.")
         sys.exit(1)
 
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -338,14 +453,15 @@ def main():
             # Store in DB
             insert_article(
                 conn,
-                source="Foreign Policy",
+                source=ArticleSource.FOREIGN_POLICY.value,
                 url=article["url"],
                 title=article["title"],
                 author=article["author"],
                 article_text=article["text"],  # Storing full text
                 core_thesis=core_thesis,
                 detailed_abstract=detailed_abstract,
-                supporting_data_quotes=supporting_data_quotes
+                supporting_data_quotes=supporting_data_quotes,
+                publication_date=article.get("publication_date"),
             )
 
     conn.close()

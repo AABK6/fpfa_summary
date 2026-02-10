@@ -5,7 +5,7 @@ permissions:
 
 on:
   schedule:
-    - cron: '0 */4 * * *'  # Run every 4 hours
+    - cron: '0 */4 * * *'  # Every 4 hours
   workflow_dispatch:
 
 jobs:
@@ -15,48 +15,56 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           persist-credentials: true
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.12'
+          cache: 'pip'
 
       - name: Install dependencies
-        run: |
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        run: pip install -r requirements.txt
 
-      - name: Install Playwright browsers
+      - name: Install Playwright browsers (FA fallback path)
         run: python -m playwright install --with-deps chromium
 
-      - name: Run first script with argument
+      - name: Run Foreign Affairs ingestion
         run: python summarize_fa_hardened.py 7
-        continue-on-error: true
 
-      - name: Run second script with argument
+      - name: Run Foreign Policy ingestion
         run: python summarize_fp.py 7
-        continue-on-error: true
 
       - name: Configure Git
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
 
-      - name: Commit changes
+      - name: Commit DB changes
+        id: commit
         run: |
-          git add .
-          git commit -m "Update articles at $(date)" || echo "No changes to commit"
+          if git diff --quiet -- articles.db; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No DB changes to commit"
+            exit 0
+          fi
+          git add articles.db
+          git commit -m "Update articles at $(date)"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Update remote URL with PAT
+        if: steps.commit.outputs.changed == 'true'
         run: |
           git remote set-url origin https://x-access-token:${{ secrets.MY_PAT }}@github.com/${{ github.repository }}.git
 
       - name: Push changes
+        if: steps.commit.outputs.changed == 'true'
         run: git push
 
       - name: Dispatch deployment workflow
+        if: steps.commit.outputs.changed == 'true'
         uses: actions/github-script@v6
         with:
           script: |
