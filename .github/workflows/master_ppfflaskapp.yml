@@ -21,7 +21,6 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME_STAGING: ${{ vars.AZURE_WEBAPP_NAME_STAGING || 'PPFFlaskApp-staging' }}
   AZURE_WEBAPP_NAME_PROD: ${{ vars.AZURE_WEBAPP_NAME_PROD || 'PPFFlaskApp' }}
 
 jobs:
@@ -60,63 +59,9 @@ jobs:
           name: backend-release
           path: release.zip
 
-  deploy-staging:
-    runs-on: ubuntu-latest
-    needs: build-test
-    environment:
-      name: Staging
-      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
-    permissions:
-      id-token: write
-      contents: read
-    outputs:
-      staging_url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
-
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: backend-release
-
-      - name: Unzip backend artifact
-        run: unzip release.zip
-
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_836431FB628F4A2FACD9AC713C3A6789 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_C226E8028E2A4E1DB2E94375D7B29B45 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_9088E3A46BFB4EA0B2375DF4A5BAEF7D }}
-
-      - name: Deploy to Azure Web App (Staging)
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME_STAGING }}
-          slot-name: Production
-
-  smoke-staging:
-    runs-on: ubuntu-latest
-    needs: deploy-staging
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install smoke test dependency
-        run: pip install requests
-
-      - name: Run staging smoke tests
-        run: |
-          python scripts/smoke_test_api.py --base-url "${{ needs.deploy-staging.outputs.staging_url }}"
-
   parser-canary-live:
     runs-on: ubuntu-latest
-    needs: deploy-staging
+    needs: build-test
 
     steps:
       - uses: actions/checkout@v4
@@ -141,7 +86,7 @@ jobs:
 
   deploy-production:
     runs-on: ubuntu-latest
-    needs: [smoke-staging, parser-canary-live]
+    needs: [build-test, parser-canary-live]
     environment:
       name: Production
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
