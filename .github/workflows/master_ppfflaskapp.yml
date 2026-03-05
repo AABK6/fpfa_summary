@@ -1,20 +1,34 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-# More info on Python, GitHub Actions, and Azure App Service: https://aka.ms/python-webapps-actions
-
-name: Build and deploy Python app to Azure Web App - PPFFlaskApp
+name: Build, Test, and Deploy Backend
 
 on:
   push:
     branches:
       - master
+    paths:
+      - app.py
+      - main.py
+      - requirements.txt
+      - summarize_fa.py
+      - summarize_fa_hardened.py
+      - summarize_fp.py
+      - models/**
+      - services/**
+      - scripts/**
+      - static/**
+      - templates/**
+      - tests/**
+      - .github/workflows/master_ppfflaskapp.yml
   workflow_dispatch:
 
+env:
+  AZURE_WEBAPP_NAME_STAGING: ${{ vars.AZURE_WEBAPP_NAME_STAGING || 'PPFFlaskApp-staging' }}
+  AZURE_WEBAPP_NAME_PROD: ${{ vars.AZURE_WEBAPP_NAME_PROD || 'PPFFlaskApp' }}
+
 jobs:
-  build:
+  build-test:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -22,54 +36,51 @@ jobs:
       - name: Set up Python version
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-          cache: 'pip' # caching pip dependencies
+          python-version: "3.12"
+          cache: "pip"
 
-      - name: Create and start virtual environment
-        run: |
-          python -m venv venv
-          source venv/bin/activate
-      
       - name: Install dependencies
         run: pip install -r requirements.txt
-        
+
       - name: Run unit and integration tests
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python -m pytest tests -q
+
+      - name: Zip backend artifact
         run: |
-          python -m pytest tests -q
+          zip -r release.zip \
+            app.py main.py requirements.txt template_utils.py \
+            summarize_fa.py summarize_fa_hardened.py summarize_fp.py \
+            models services scripts static templates
 
-      - name: Zip artifact for deployment
-        run: zip release.zip ./* -r
-
-      - name: Upload artifact for deployment jobs
+      - name: Upload backend artifact
         uses: actions/upload-artifact@v4
         with:
-          name: python-app
-          path: |
-            release.zip
-            !venv/
+          name: backend-release
+          path: release.zip
 
-  deploy:
+  deploy-staging:
     runs-on: ubuntu-latest
-    needs: build
+    needs: build-test
     environment:
-      name: 'Production'
+      name: Staging
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      id-token: write
+      contents: read
+    outputs:
+      staging_url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
 
     steps:
-      - name: Download artifact from build job
+      - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: python-app
+          name: backend-release
 
-      - name: Unzip artifact for deployment
+      - name: Unzip backend artifact
         run: unzip release.zip
 
-      
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -77,10 +88,107 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_C226E8028E2A4E1DB2E94375D7B29B45 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_9088E3A46BFB4EA0B2375DF4A5BAEF7D }}
 
-      - name: 'Deploy to Azure Web App'
-        uses: azure/webapps-deploy@v3
+      - name: Deploy to Azure Web App (Staging)
         id: deploy-to-webapp
+        uses: azure/webapps-deploy@v3
         with:
-          app-name: 'PPFFlaskApp'
-          slot-name: 'Production'
-          
+          app-name: ${{ env.AZURE_WEBAPP_NAME_STAGING }}
+          slot-name: Production
+
+  smoke-staging:
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install smoke test dependency
+        run: pip install requests
+
+      - name: Run staging smoke tests
+        run: |
+          python scripts/smoke_test_api.py --base-url "${{ needs.deploy-staging.outputs.staging_url }}"
+
+  parser-canary-live:
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python version
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install parser canary dependencies
+        run: |
+          pip install \
+            beautifulsoup4 requests google-genai \
+            playwright playwright-stealth SQLAlchemy
+
+      - name: Install Playwright browser
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run live parser canary
+        run: python scripts/live_parser_canary.py
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: [smoke-staging, parser-canary-live]
+    environment:
+      name: Production
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      prod_url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-release
+
+      - name: Unzip backend artifact
+        run: unzip release.zip
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_836431FB628F4A2FACD9AC713C3A6789 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_C226E8028E2A4E1DB2E94375D7B29B45 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_9088E3A46BFB4EA0B2375DF4A5BAEF7D }}
+
+      - name: Deploy to Azure Web App (Production)
+        id: deploy-to-webapp
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME_PROD }}
+          slot-name: Production
+
+  smoke-production:
+    runs-on: ubuntu-latest
+    needs: deploy-production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install smoke test dependency
+        run: pip install requests
+
+      - name: Run production smoke tests
+        run: |
+          python scripts/smoke_test_api.py --base-url "${{ needs.deploy-production.outputs.prod_url }}"

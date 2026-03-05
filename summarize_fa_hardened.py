@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import os
 import sys
-import sqlite3
 from typing import List, Dict
 
 from bs4 import BeautifulSoup
@@ -30,6 +29,7 @@ import requests
 from google import genai  #  → works exactly as in the original script
 
 from models.sources import ArticleSource
+from services.article_repository import ArticleRepository, resolve_articles_db_path
 
 # --------------------------------------------------------------------------------------
 # Constants & configuration
@@ -47,40 +47,16 @@ USER_AGENT = (
 # --------------------------------------------------------------------------------------
 # Database helpers (identical to the original ones) ––––––––––––––––––––––––––––––––––––
 # --------------------------------------------------------------------------------------
-DB_PATH = "articles.db"
+DB_PATH = resolve_articles_db_path()
 
 
 def init_db(db_path: str = DB_PATH):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS articles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source TEXT,
-            url TEXT UNIQUE,
-            title TEXT,
-            author TEXT,
-            article_text TEXT,
-            core_thesis TEXT,
-            detailed_abstract TEXT,
-            supporting_data_quotes TEXT,
-            publication_date TEXT,
-            date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    cursor.execute("PRAGMA table_info(articles)")
-    column_names = {row[1] for row in cursor.fetchall()}
-    if "publication_date" not in column_names:
-        cursor.execute("ALTER TABLE articles ADD COLUMN publication_date TEXT")
-
-    conn.commit()
-    return conn
+    database_url = os.getenv("DATABASE_URL")
+    return ArticleRepository(database_url=database_url, sqlite_path=db_path)
 
 
 def insert_article(
-    conn,
+    repo,
     source,
     url,
     title,
@@ -91,43 +67,31 @@ def insert_article(
     supporting_data_quotes,
     publication_date=None,
 ):
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO articles
-            (source, url, title, author, article_text,
-             core_thesis, detailed_abstract, supporting_data_quotes, publication_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                source,
-                url,
-                title,
-                author,
-                article_text,
-                core_thesis,
-                detailed_abstract,
-                supporting_data_quotes,
-                publication_date,
-            ),
-        )
-        conn.commit()
-    except sqlite3.IntegrityError:
-        pass  # already cached
-
-
-def get_article_by_url(conn, url):
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT title, author, article_text, core_thesis,
-               detailed_abstract, supporting_data_quotes
-        FROM articles WHERE url = ?
-        """,
-        (url,),
+    repo.insert_article(
+        source=source,
+        url=url,
+        title=title,
+        author=author,
+        article_text=article_text,
+        core_thesis=core_thesis,
+        detailed_abstract=detailed_abstract,
+        supporting_data_quotes=supporting_data_quotes,
+        publication_date=publication_date,
     )
-    return cursor.fetchone()
+
+
+def get_article_by_url(repo, url):
+    row = repo.get_article_by_url(url)
+    if not row:
+        return None
+    return (
+        row.get("title"),
+        row.get("author"),
+        row.get("article_text"),
+        row.get("core_thesis"),
+        row.get("detailed_abstract"),
+        row.get("supporting_data_quotes"),
+    )
 
 
 # --------------------------------------------------------------------------------------

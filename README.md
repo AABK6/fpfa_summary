@@ -11,6 +11,10 @@ python app.py
 
 The API will be available at `http://localhost:5000/api/articles` by default.
 
+Database runtime behavior:
+- If `DATABASE_URL` is set, backend and ingestion use that remote database.
+- Otherwise they use local SQLite at `ARTICLES_DB_PATH` (or `articles.db` by default).
+
 ## CLI and pipeline
 
 Run the unified pipeline and scrapers without starting the server:
@@ -87,6 +91,16 @@ This repo includes pytest tests for scrapers, API, and the pipeline.
 
 ```bash
 pytest -q
+```
+
+Additional deployment-oriented checks:
+
+```bash
+# Parser canary against live source sites
+python scripts/live_parser_canary.py
+
+# API smoke check against a deployed base URL
+python scripts/smoke_test_api.py --base-url https://your-app.azurewebsites.net
 ```
 
 Tests avoid network calls by using HTML fixtures and a stub summarizer.

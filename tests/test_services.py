@@ -12,6 +12,9 @@ TEST_DB = "test_articles.db"
 
 @pytest.fixture
 def article_service():
+    if os.path.exists(TEST_DB):
+        os.remove(TEST_DB)
+
     conn = sqlite3.connect(TEST_DB)
     conn.execute(
         """

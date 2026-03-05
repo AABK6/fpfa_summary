@@ -7,77 +7,57 @@ from google.genai import types
 import os
 
 from models.sources import ArticleSource
+from services.article_repository import ArticleRepository, resolve_articles_db_path
 
 # ======= DATABASE IMPORTS AND FUNCTIONS (MINIMAL ADDITION) =======
-import sqlite3
-
 ALLOW_TRUNCATED_CONTENT = os.getenv("ALLOW_TRUNCATED_CONTENT", "0") == "1"
 
-def init_db(db_path="articles.db"):
+def init_db(db_path=None):
     """
     Creates (if not exists) a table 'articles' for storing article data.
     Includes a column 'article_text' to store the full text of the article.
     The URL is declared UNIQUE to skip duplicates.
     """
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS articles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source TEXT,
-            url TEXT UNIQUE,
-            title TEXT,
-            author TEXT,
-            article_text TEXT,
-            core_thesis TEXT,
-            detailed_abstract TEXT,
-            supporting_data_quotes TEXT,
-            publication_date TEXT,
-            date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    cursor.execute("PRAGMA table_info(articles)")
-    column_names = {row[1] for row in cursor.fetchall()}
-    if "publication_date" not in column_names:
-        cursor.execute("ALTER TABLE articles ADD COLUMN publication_date TEXT")
+    database_url = os.getenv("DATABASE_URL")
+    resolved_path = db_path or resolve_articles_db_path()
+    return ArticleRepository(database_url=database_url, sqlite_path=resolved_path)
 
-    conn.commit()
-    return conn
-
-def insert_article(conn, source, url, title, author, article_text,
+def insert_article(repo, source, url, title, author, article_text,
                    core_thesis, detailed_abstract, supporting_data_quotes, publication_date=None):
     """
     Inserts an article into the database table 'articles'.
     Skips if the URL is already present (UNIQUE constraint).
     """
-    try:
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO articles
-            (source, url, title, author, article_text,
-             core_thesis, detailed_abstract, supporting_data_quotes, publication_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (source, url, title, author, article_text,
-              core_thesis, detailed_abstract, supporting_data_quotes, publication_date))
-        conn.commit()
+    inserted = repo.insert_article(
+        source=source,
+        url=url,
+        title=title,
+        author=author,
+        article_text=article_text,
+        core_thesis=core_thesis,
+        detailed_abstract=detailed_abstract,
+        supporting_data_quotes=supporting_data_quotes,
+        publication_date=publication_date,
+    )
+    if inserted:
         print(f"Inserted article into DB: {title}")
-    except sqlite3.IntegrityError:
-        # We'll handle pre-existing articles in main() by checking first
-        pass
 
-def get_article_by_url(conn, url):
+def get_article_by_url(repo, url):
     """
     Returns (title, author, article_text, core_thesis, detailed_abstract, supporting_data_quotes) if present,
     or None if not found.
     """
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT title, author, article_text, core_thesis,
-               detailed_abstract, supporting_data_quotes
-        FROM articles
-        WHERE url = ?
-    ''', (url,))
-    return cursor.fetchone()
+    row = repo.get_article_by_url(url)
+    if not row:
+        return None
+    return (
+        row.get("title"),
+        row.get("author"),
+        row.get("article_text"),
+        row.get("core_thesis"),
+        row.get("detailed_abstract"),
+        row.get("supporting_data_quotes"),
+    )
 
 
 
@@ -390,7 +370,7 @@ def main():
         sys.exit(1)
 
     # === Initialize Database (MINIMAL ADDITION) ===
-    conn = init_db("articles.db")
+    conn = init_db(resolve_articles_db_path())
 
     articles_data = []
     for url in article_urls:

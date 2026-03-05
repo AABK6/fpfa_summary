@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from models.article import Article
-from services.article_service import ArticleService, resolve_articles_db_path
+from services.article_service import ArticleService, get_cached_article_service
 from template_utils import safe_date
 
 app = FastAPI(
@@ -42,9 +42,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 def get_article_service() -> ArticleService:
-    return ArticleService(db_path=resolve_articles_db_path())
+    return get_cached_article_service()
 
 
 @app.get("/health")

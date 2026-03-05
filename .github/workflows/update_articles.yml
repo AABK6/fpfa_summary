@@ -1,7 +1,6 @@
 name: Update articles
 permissions:
-  contents: write
-  actions: write
+  contents: read
 
 on:
   schedule:
@@ -13,11 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL_PROD || secrets.DATABASE_URL }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,42 +34,3 @@ jobs:
 
       - name: Run Foreign Policy ingestion
         run: python summarize_fp.py 7
-
-      - name: Configure Git
-        run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
-
-      - name: Commit DB changes
-        id: commit
-        run: |
-          if git diff --quiet -- articles.db; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No DB changes to commit"
-            exit 0
-          fi
-          git add articles.db
-          git commit -m "Update articles at $(date)"
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-
-      - name: Update remote URL with PAT
-        if: steps.commit.outputs.changed == 'true'
-        run: |
-          git remote set-url origin https://x-access-token:${{ secrets.MY_PAT }}@github.com/${{ github.repository }}.git
-
-      - name: Push changes
-        if: steps.commit.outputs.changed == 'true'
-        run: git push
-
-      - name: Dispatch deployment workflow
-        if: steps.commit.outputs.changed == 'true'
-        uses: actions/github-script@v6
-        with:
-          script: |
-            github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'master_ppfflaskapp.yml',
-              ref: 'master',
-              inputs: {}
-            })

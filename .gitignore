@@ -7,3 +7,4 @@ cookies.pkl
 !fpfa_app/test/
 !fpfa_app/test/**
 .log
+articles.db
