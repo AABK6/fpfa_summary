@@ -7,9 +7,11 @@ from typing import Any
 from urllib.parse import quote_plus
 
 from sqlalchemy import DateTime, Index, Integer, MetaData, String, Table, Text
-from sqlalchemy import Column, create_engine, func, insert, inspect, select, text
+from sqlalchemy import Column, create_engine, func, insert, inspect, select, text, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
+
+from services.publication_dates import coerce_publication_date
 
 
 metadata = MetaData()
@@ -129,8 +131,9 @@ class ArticleRepository:
         for row in rows:
             payload = dict(row)
             payload["date_added"] = _serialize_value(payload.get("date_added"), field="date_added")
-            payload["publication_date"] = _serialize_value(
-                payload.get("publication_date"), field="publication_date"
+            payload["publication_date"] = coerce_publication_date(
+                _serialize_value(payload.get("publication_date"), field="publication_date"),
+                url=payload.get("url"),
             )
             serialized.append(payload)
         return serialized
@@ -143,7 +146,10 @@ class ArticleRepository:
             return None
         payload = dict(row)
         payload["date_added"] = _serialize_value(payload.get("date_added"), field="date_added")
-        payload["publication_date"] = _serialize_value(payload.get("publication_date"), field="publication_date")
+        payload["publication_date"] = coerce_publication_date(
+            _serialize_value(payload.get("publication_date"), field="publication_date"),
+            url=payload.get("url"),
+        )
         return payload
 
     def insert_article(
@@ -159,6 +165,7 @@ class ArticleRepository:
         supporting_data_quotes: str,
         publication_date: str | None = None,
     ) -> bool:
+        normalized_publication_date = coerce_publication_date(publication_date, url=url)
         payload = {
             "source": source,
             "url": url,
@@ -168,7 +175,7 @@ class ArticleRepository:
             "core_thesis": core_thesis,
             "detailed_abstract": detailed_abstract,
             "supporting_data_quotes": supporting_data_quotes,
-            "publication_date": publication_date,
+            "publication_date": normalized_publication_date,
         }
         try:
             with self.engine.begin() as conn:
@@ -176,3 +183,27 @@ class ArticleRepository:
         except IntegrityError:
             return False
         return True
+
+    def list_articles_with_publication_dates(self) -> list[dict[str, Any]]:
+        stmt = (
+            select(
+                articles_table.c.id,
+                articles_table.c.source,
+                articles_table.c.url,
+                articles_table.c.title,
+                articles_table.c.publication_date,
+            )
+            .where(articles_table.c.publication_date.is_not(None))
+            .order_by(articles_table.c.id.asc())
+        )
+        with self.engine.connect() as conn:
+            rows = conn.execute(stmt).mappings().all()
+        return [dict(row) for row in rows]
+
+    def update_article_publication_date(self, article_id: int, publication_date: str | None) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(
+                update(articles_table)
+                .where(articles_table.c.id == article_id)
+                .values(publication_date=publication_date)
+            )

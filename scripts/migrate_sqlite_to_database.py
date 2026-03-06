@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from services.article_repository import ArticleRepository, articles_table, resolve_articles_db_path
+from services.publication_dates import coerce_publication_date
 
 
 SELECT_BASE = """
@@ -58,7 +59,10 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
         "core_thesis": str(row.get("core_thesis") or ""),
         "detailed_abstract": str(row.get("detailed_abstract") or ""),
         "supporting_data_quotes": str(row.get("supporting_data_quotes") or ""),
-        "publication_date": row.get("publication_date"),
+        "publication_date": coerce_publication_date(
+            row.get("publication_date"),
+            url=str(row.get("url") or ""),
+        ),
     }
 
 

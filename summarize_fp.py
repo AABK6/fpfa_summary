@@ -8,6 +8,7 @@ import os
 
 from models.sources import ArticleSource
 from services.article_repository import ArticleRepository, resolve_articles_db_path
+from services.publication_dates import extract_publication_date_from_soup
 
 # ======= DATABASE IMPORTS AND FUNCTIONS (MINIMAL ADDITION) =======
 ALLOW_TRUNCATED_CONTENT = os.getenv("ALLOW_TRUNCATED_CONTENT", "0") == "1"
@@ -206,23 +207,7 @@ def scrape_foreignpolicy_article(url):
             if len(rendered_body) > len(article_body):
                 article_body = rendered_body
 
-    publication_date = None
-    published_meta = soup.find("meta", attrs={"property": "article:published_time"})
-    if published_meta and published_meta.get("content"):
-        publication_date = published_meta["content"].strip()
-    else:
-        time_tag = soup.find("time")
-        if time_tag:
-            publication_date = (time_tag.get("datetime") or time_tag.get_text(strip=True) or None)
-
-    publication_date = None
-    published_meta = soup.find("meta", attrs={"property": "article:published_time"})
-    if published_meta and published_meta.get("content"):
-        publication_date = published_meta["content"].strip()
-    else:
-        time_tag = soup.find("time")
-        if time_tag:
-            publication_date = (time_tag.get("datetime") or time_tag.get_text(strip=True) or None)
+    publication_date = extract_publication_date_from_soup(soup, url=url)
 
     return {
         "title": title,

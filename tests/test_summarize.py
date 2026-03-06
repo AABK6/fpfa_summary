@@ -128,5 +128,33 @@ class TestSummarizeFP(unittest.TestCase):
         self.assertIn("https://foreignpolicy.com/article/1", urls)
         self.assertIn("https://foreignpolicy.com/article/2", urls)
 
+    @patch('requests.get')
+    def test_scrape_fp_article_prefers_json_ld_date_over_stray_time_tags(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.text = """
+        <html>
+            <head>
+                <script type="application/ld+json">
+                    {"@context":"https://schema.org","@type":"NewsArticle","datePublished":"2026-02-19T20:03:47Z"}
+                </script>
+            </head>
+            <body>
+                <div class="hed-heading"><h1 class="hed">FP Title</h1></div>
+                <meta name="author" content="FP Author">
+                <time datetime="2099-03-09" class="date-time"></time>
+                <time datetime="2099-04-13" class="date-time"></time>
+                <div class="content-ungated">
+                    <p>FP Paragraph</p>
+                </div>
+            </body>
+        </html>
+        """
+        mock_get.return_value = mock_response
+
+        result = summarize_fp.scrape_foreignpolicy_article(
+            "https://foreignpolicy.com/2026/02/19/test-article/"
+        )
+        self.assertEqual(result["publication_date"], "2026-02-19")
+
 if __name__ == '__main__':
     unittest.main()

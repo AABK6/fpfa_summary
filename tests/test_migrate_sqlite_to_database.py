@@ -69,3 +69,43 @@ def test_migrate_rows_idempotent(tmp_path):
     assert skipped_second == 1
     assert migrated is not None
     assert migrated["title"] == "Migration Title"
+
+
+def test_migrate_rows_normalizes_future_publication_date_from_url(tmp_path):
+    source_db = tmp_path / "source.db"
+    target_db = tmp_path / "target.db"
+    _seed_source_db(str(source_db))
+
+    conn = sqlite3.connect(source_db)
+    conn.execute(
+        """
+        INSERT INTO articles (
+            source, url, title, author, article_text,
+            core_thesis, detailed_abstract, supporting_data_quotes, publication_date
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "Foreign Policy",
+            "https://foreignpolicy.com/2024/03/04/future-migrate",
+            "Future Migration Title",
+            "Migration Author",
+            "Migration text",
+            "Migration core",
+            "Migration abstract",
+            "Migration quotes",
+            "2099-01-01",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    rows = read_sqlite_rows(str(source_db))
+    repo = ArticleRepository(sqlite_path=str(target_db))
+    try:
+        migrate_rows(rows, repo)
+        migrated = repo.get_article_by_url("https://foreignpolicy.com/2024/03/04/future-migrate")
+    finally:
+        repo.close()
+
+    assert migrated is not None
+    assert migrated["publication_date"] == "2024-03-04"

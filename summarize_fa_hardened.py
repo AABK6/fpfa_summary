@@ -30,6 +30,7 @@ from google import genai  #  → works exactly as in the original script
 
 from models.sources import ArticleSource
 from services.article_repository import ArticleRepository, resolve_articles_db_path
+from services.publication_dates import extract_publication_date_from_soup
 
 # --------------------------------------------------------------------------------------
 # Constants & configuration
@@ -220,14 +221,7 @@ def extract_foreign_affairs_article(url: str) -> Dict[str, str] | None:
         text_parts = [p.get_text(strip=True) for p in article_body.find_all("p")]
         text = "\n\n".join(text_parts)
 
-    publication_date = None
-    published_meta = soup.find("meta", attrs={"property": "article:published_time"})
-    if published_meta and published_meta.get("content"):
-        publication_date = published_meta["content"].strip()
-    else:
-        time_tag = soup.find("time")
-        if time_tag:
-            publication_date = (time_tag.get("datetime") or time_tag.get_text(strip=True) or None)
+    publication_date = extract_publication_date_from_soup(soup, url=url)
 
     return {
         "title": title,
