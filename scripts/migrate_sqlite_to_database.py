@@ -5,6 +5,7 @@ import argparse
 import os
 import sqlite3
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +30,8 @@ SELECT
     core_thesis,
     detailed_abstract,
     supporting_data_quotes,
-    {publication_date_expr}
+    {publication_date_expr},
+    {date_added_expr}
 FROM articles
 """
 
@@ -42,11 +44,34 @@ def read_sqlite_rows(source_path: str) -> list[dict[str, Any]]:
     cursor.execute("PRAGMA table_info(articles)")
     columns = {row[1] for row in cursor.fetchall()}
     publication_date_expr = "publication_date" if "publication_date" in columns else "NULL AS publication_date"
+    date_added_expr = "date_added" if "date_added" in columns else "CURRENT_TIMESTAMP AS date_added"
 
-    cursor.execute(SELECT_BASE.format(publication_date_expr=publication_date_expr))
+    cursor.execute(
+        SELECT_BASE.format(
+            publication_date_expr=publication_date_expr,
+            date_added_expr=date_added_expr,
+        )
+    )
     rows = [dict(row) for row in cursor.fetchall()]
     conn.close()
     return rows
+
+
+def _coerce_date_added(raw_value: Any) -> datetime | None:
+    if raw_value in (None, ""):
+        return None
+    if isinstance(raw_value, datetime):
+        return raw_value
+    text_value = str(raw_value).strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
+        try:
+            return datetime.strptime(text_value, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text_value)
+    except ValueError:
+        return None
 
 
 def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -63,6 +88,7 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
             row.get("publication_date"),
             url=str(row.get("url") or ""),
         ),
+        "date_added": _coerce_date_added(row.get("date_added")),
     }
 
 

@@ -29,8 +29,8 @@ def _seed_source_db(path: str) -> None:
         """
         INSERT INTO articles (
             source, url, title, author, article_text,
-            core_thesis, detailed_abstract, supporting_data_quotes, publication_date
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            core_thesis, detailed_abstract, supporting_data_quotes, publication_date, date_added
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             "Foreign Affairs",
@@ -42,6 +42,7 @@ def _seed_source_db(path: str) -> None:
             "Migration abstract",
             "Migration quotes",
             "2024-03-03",
+            "2024-03-04 05:06:07",
         ),
     )
     conn.commit()
@@ -109,3 +110,20 @@ def test_migrate_rows_normalizes_future_publication_date_from_url(tmp_path):
 
     assert migrated is not None
     assert migrated["publication_date"] == "2024-03-04"
+
+
+def test_migrate_rows_preserves_date_added(tmp_path):
+    source_db = tmp_path / "source.db"
+    target_db = tmp_path / "target.db"
+    _seed_source_db(str(source_db))
+
+    rows = read_sqlite_rows(str(source_db))
+    repo = ArticleRepository(sqlite_path=str(target_db))
+    try:
+        migrate_rows(rows, repo)
+        migrated = repo.get_article_by_url("https://fa.com/migrate")
+    finally:
+        repo.close()
+
+    assert migrated is not None
+    assert migrated["date_added"] == "2024-03-04 05:06:07"

@@ -8,3 +8,5 @@ cookies.pkl
 !fpfa_app/test/**
 .log
 articles.db
+.sync_backups/
+articles.db.pre-*
