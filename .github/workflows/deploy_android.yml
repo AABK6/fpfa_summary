@@ -1,0 +1,41 @@
+name: Deploy Android to Firebase App Distribution
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'fpfa_app/**'
+      - '.github/workflows/deploy_android.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: fpfa_app
+
+      - name: Build APK
+        run: flutter build apk --release
+        working-directory: fpfa_app
+
+      - name: Upload to Firebase App Distribution
+        uses: w9jds/firebase-action@master
+        with:
+          args: appdistribution:distribute fpfa_app/build/app/outputs/flutter-apk/app-release.apk --app 1:1028212947283:android:295bda3d6c89668cd549a6 --groups "testers"
+        env:
+          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
