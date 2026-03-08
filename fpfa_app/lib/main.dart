@@ -19,10 +19,10 @@ String _resolveApiBaseUrl() {
   }
 
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-    return 'http://10.0.2.2:5000';
+    return 'http://10.0.2.2:8000';
   }
 
-  return 'http://localhost:5000';
+  return 'http://localhost:8000';
 }
 
 void main() async {
@@ -33,20 +33,25 @@ void main() async {
     MultiProvider(
       providers: [
         Provider<http.Client>(create: (_) => http.Client()),
-        Provider<SharedPreferences>(create: (_) => sharedPreferences),
-        ProxyProvider2<http.Client, SharedPreferences, ArticleProvider>(
-          update: (context, client, prefs, _) {
-            final remoteDataSource = RemoteArticleDataSourceImpl(
-              client: client,
-              baseUrl: _resolveApiBaseUrl(),
+        Provider<SharedPreferences>.value(value: sharedPreferences),
+        Provider<ArticleRepositoryImpl>(
+          create: (context) {
+            final client = context.read<http.Client>();
+            final prefs = context.read<SharedPreferences>();
+            return ArticleRepositoryImpl(
+              remoteDataSource: RemoteArticleDataSourceImpl(
+                client: client,
+                baseUrl: _resolveApiBaseUrl(),
+              ),
+              localDataSource: LocalArticleDataSourceImpl(
+                sharedPreferences: prefs,
+              ),
             );
-            final localDataSource = LocalArticleDataSourceImpl(
-              sharedPreferences: prefs,
-            );
-            final repository = ArticleRepositoryImpl(
-              remoteDataSource: remoteDataSource,
-              localDataSource: localDataSource,
-            );
+          },
+        ),
+        ChangeNotifierProvider<ArticleProvider>(
+          create: (context) {
+            final repository = context.read<ArticleRepositoryImpl>();
             return ArticleProvider(
               getArticlesUseCase: GetArticles(repository),
             );
