@@ -23,9 +23,6 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
       - name: Install SQL Server ODBC runtime
         run: |
           sudo apt-get update
@@ -34,7 +31,27 @@ jobs:
           sudo dpkg -i packages-microsoft-prod.deb
           rm packages-microsoft-prod.deb
           sudo apt-get update
-          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
+          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc unixodbc-dev odbcinst
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Diagnose SQL driver selection
+        run: |
+          python - <<'PY'
+          import os
+          from services.article_repository import _pyodbc_usable, normalize_database_url
+
+          print(f"pyodbc_usable={_pyodbc_usable()}")
+          normalized = normalize_database_url(os.environ["DATABASE_URL"])
+          print(f"normalized_scheme={normalized.split('://', 1)[0]}")
+
+          try:
+              import pyodbc
+              print(f"pyodbc_drivers={pyodbc.drivers()}")
+          except Exception as exc:
+              print(f"pyodbc_import_error={type(exc).__name__}: {exc}")
+          PY
 
       - name: Install Playwright browsers (FA fallback path)
         run: python -m playwright install --with-deps chromium
