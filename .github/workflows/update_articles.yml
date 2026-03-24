@@ -17,8 +17,8 @@ jobs:
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       ARTICLE_STORE: firestore
-      FIRESTORE_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
-      ARTICLES_COLLECTION: ${{ env.ARTICLES_COLLECTION }}
+      FIRESTORE_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'pressreview-458312' }}
+      ARTICLES_COLLECTION: ${{ vars.ARTICLES_COLLECTION || 'articles' }}
 
     steps:
       - name: Check out repository
