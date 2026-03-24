@@ -2,13 +2,44 @@ from __future__ import annotations
 
 from sqlalchemy import insert
 
-from services.article_repository import ArticleRepository, resolve_database_url
+from services.article_repository import ArticleRepository, normalize_database_url, resolve_database_url
 from services.article_repository import articles_table
 
 
 def test_resolve_database_url_prefers_database_url(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite:////tmp/runtime.db")
     assert resolve_database_url() == "sqlite:////tmp/runtime.db"
+
+
+def test_normalize_database_url_converts_sqlserver_url_to_pymssql():
+    assert (
+        normalize_database_url(
+            "sqlserver://user:pass@example.database.windows.net:1433/fpfa"
+            "?driver=ODBC+Driver+18+for+SQL+Server"
+        )
+        == "mssql+pymssql://user:pass@example.database.windows.net:1433/fpfa"
+    )
+
+
+def test_normalize_database_url_converts_connection_string_to_pymssql():
+    assert (
+        normalize_database_url(
+            "Server=tcp:example.database.windows.net,1433;Database=fpfa;"
+            "Uid=user;Pwd=pass;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+        )
+        == "mssql+pymssql://user:pass@example.database.windows.net:1433/fpfa"
+    )
+
+
+def test_normalize_database_url_converts_odbc_connect_wrapper_to_pymssql():
+    assert (
+        normalize_database_url(
+            "mssql+pyodbc:///?odbc_connect="
+            "Server%3Dtcp%3Aexample.database.windows.net%2C1433%3B"
+            "Database%3Dfpfa%3BUid%3Duser%3BPwd%3Dpass%3BEncrypt%3Dyes%3B"
+        )
+        == "mssql+pymssql://user:pass@example.database.windows.net:1433/fpfa"
+    )
 
 
 def test_resolve_database_url_falls_back_to_sqlite_path(monkeypatch, tmp_path):

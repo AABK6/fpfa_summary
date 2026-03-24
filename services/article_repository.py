@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.parse import parse_qs, quote, quote_plus, unquote_plus, urlparse
 
 from sqlalchemy import DateTime, Index, Integer, MetaData, String, Table, Text
 from sqlalchemy import Column, create_engine, func, insert, inspect, select, text, update
@@ -47,12 +47,107 @@ def resolve_articles_db_path() -> str:
 def normalize_database_url(raw_url: str) -> str:
     """Normalize common SQL Server connection-string formats to SQLAlchemy URLs."""
     value = raw_url.strip()
-    if value.startswith("sqlserver://"):
-        return "mssql+pyodbc://" + value[len("sqlserver://") :]
+
+    def _build_pymssql_url(
+        *,
+        host: str,
+        database: str,
+        username: str | None = None,
+        password: str | None = None,
+        port: str | None = None,
+    ) -> str:
+        host = host.strip()
+        if not host:
+            raise ValueError("Database host cannot be empty.")
+
+        auth = ""
+        if username:
+            auth = quote(username, safe="")
+            if password is not None:
+                auth += ":" + quote(password, safe="")
+            auth += "@"
+
+        host_port = host
+        if port:
+            host_port = f"{host}:{port}"
+
+        return f"mssql+pymssql://{auth}{host_port}/{quote(database.strip('/'), safe='')}"
+
+    def _server_to_host_port(server: str | None) -> tuple[str | None, str | None]:
+        if not server:
+            return None, None
+        normalized = server.strip()
+        if normalized.lower().startswith("tcp:"):
+            normalized = normalized[4:]
+        if "," in normalized:
+            host, port = normalized.rsplit(",", 1)
+            return host.strip() or None, port.strip() or None
+        return normalized or None, None
+
+    def _connection_string_parts(connection_string: str) -> dict[str, str]:
+        parts: dict[str, str] = {}
+        for segment in connection_string.split(";"):
+            if "=" not in segment:
+                continue
+            key, value = segment.split("=", 1)
+            parts[key.strip().lower()] = value.strip()
+        return parts
+
+    def _pymssql_url_from_connection_string(connection_string: str) -> str | None:
+        parts = _connection_string_parts(connection_string)
+        host, port = _server_to_host_port(
+            parts.get("server")
+            or parts.get("data source")
+            or parts.get("address")
+            or parts.get("addr")
+            or parts.get("network address")
+        )
+        database = parts.get("database") or parts.get("initial catalog")
+        username = (
+            parts.get("uid")
+            or parts.get("user id")
+            or parts.get("user")
+            or parts.get("username")
+        )
+        password = parts.get("pwd") or parts.get("password")
+        if not host or not database:
+            return None
+        return _build_pymssql_url(
+            host=host,
+            port=port,
+            database=database,
+            username=username,
+            password=password,
+        )
+
+    if value.startswith("mssql+pyodbc:///?odbc_connect="):
+        parsed = urlparse(value)
+        encoded_connection_string = parse_qs(parsed.query).get("odbc_connect", [None])[0]
+        if encoded_connection_string:
+            converted = _pymssql_url_from_connection_string(unquote_plus(encoded_connection_string))
+            if converted:
+                return converted
+
+    if value.startswith("sqlserver://") or value.startswith("mssql+pyodbc://"):
+        parsed = urlparse(value)
+        if parsed.hostname and parsed.path:
+            return _build_pymssql_url(
+                host=parsed.hostname,
+                port=str(parsed.port) if parsed.port else None,
+                database=parsed.path.lstrip("/"),
+                username=parsed.username,
+                password=parsed.password,
+            )
+
     if "://" in value:
         return value
+
     if "Server=" in value and "Database=" in value:
+        converted = _pymssql_url_from_connection_string(value)
+        if converted:
+            return converted
         return f"mssql+pyodbc:///?odbc_connect={quote_plus(value)}"
+
     return value
 
 
