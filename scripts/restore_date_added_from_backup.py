@@ -9,8 +9,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import text
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -94,26 +92,13 @@ def restore_sqlite(*, backup_rows: list[dict[str, Any]], target_path: Path) -> t
 def restore_remote(*, backup_rows: list[dict[str, Any]], target_url: str) -> tuple[int, int]:
     repo = ArticleRepository(database_url=target_url)
     try:
-        with repo.engine.connect() as conn:
-            total_rows = conn.execute(text('SELECT COUNT(*) FROM articles')).scalar_one()
-            matched = 0
-            chunk_size = 500
-            for start in range(0, len(backup_rows), chunk_size):
-                batch = backup_rows[start:start + chunk_size]
-                params = {f'url_{idx}': row['url'] for idx, row in enumerate(batch)}
-                placeholders = ', '.join(f':url_{idx}' for idx, _ in enumerate(batch))
-                matched += conn.execute(
-                    text(f'SELECT COUNT(*) FROM articles WHERE url IN ({placeholders})'),
-                    params,
-                ).scalar_one()
-        with repo.engine.begin() as conn:
-            conn.execute(
-                text('UPDATE articles SET date_added = :date_added WHERE url = :url'),
-                [
-                    {'url': row['url'], 'date_added': row['date_added_dt']}
-                    for row in backup_rows
-                ],
-            )
+        total_rows = len(repo.get_latest_articles(limit=100000))
+        matched = 0
+        for row in backup_rows:
+            if repo.get_article_by_url(row['url']) is None:
+                continue
+            matched += 1
+            repo.update_article_date_added_by_url(row['url'], row['date_added_dt'])
         return matched, total_rows
     finally:
         repo.close()

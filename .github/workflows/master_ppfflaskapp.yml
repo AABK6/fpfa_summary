@@ -1,4 +1,4 @@
-name: Build, Test, and Deploy Backend
+name: Build, Test, and Deploy Backend to Cloud Run
 
 on:
   push:
@@ -17,11 +17,17 @@ on:
       - static/**
       - templates/**
       - tests/**
+      - Dockerfile
+      - .dockerignore
       - .github/workflows/master_ppfflaskapp.yml
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME_PROD: ${{ vars.AZURE_WEBAPP_NAME_PROD || 'PPFFlaskApp' }}
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'pressreview-458312' }}
+  GCP_REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
+  GCP_BACKEND_SERVICE: ${{ vars.GCP_BACKEND_SERVICE || 'fpfa-summary-api' }}
+  GCP_ARTIFACT_REPOSITORY: ${{ vars.GCP_ARTIFACT_REPOSITORY || 'fpfa' }}
+  ARTICLES_COLLECTION: ${{ vars.ARTICLES_COLLECTION || 'articles' }}
 
 jobs:
   build-test:
@@ -45,19 +51,6 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python -m pytest tests -q
-
-      - name: Zip backend artifact
-        run: |
-          zip -r release.zip \
-            app.py main.py requirements.txt template_utils.py \
-            summarize_fa.py summarize_fa_hardened.py summarize_fp.py \
-            models services scripts static templates
-
-      - name: Upload backend artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-release
-          path: release.zip
 
   parser-canary-live:
     runs-on: ubuntu-latest
@@ -89,35 +82,57 @@ jobs:
     needs: [build-test, parser-canary-live]
     environment:
       name: Production
-      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+      url: ${{ steps.deploy.outputs.service_url }}
     permissions:
-      id-token: write
       contents: read
+      id-token: write
     outputs:
-      prod_url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+      prod_url: ${{ steps.deploy.outputs.service_url }}
 
     steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: backend-release
+      - uses: actions/checkout@v4
 
-      - name: Unzip backend artifact
-        run: unzip release.zip
-
-      - name: Login to Azure
-        uses: azure/login@v2
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_836431FB628F4A2FACD9AC713C3A6789 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_C226E8028E2A4E1DB2E94375D7B29B45 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_9088E3A46BFB4EA0B2375DF4A5BAEF7D }}
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
 
-      - name: Deploy to Azure Web App (Production)
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME_PROD }}
-          slot-name: Production
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker "${{ env.GCP_REGION }}-docker.pkg.dev" --quiet
+
+      - name: Ensure Artifact Registry repository exists
+        run: |
+          gcloud artifacts repositories describe "${GCP_ARTIFACT_REPOSITORY}" \
+            --location "${GCP_REGION}" >/dev/null 2>&1 || \
+          gcloud artifacts repositories create "${GCP_ARTIFACT_REPOSITORY}" \
+            --repository-format=docker \
+            --location "${GCP_REGION}" \
+            --description "FPFA backend images"
+
+      - name: Build container image
+        run: |
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPOSITORY}/${GCP_BACKEND_SERVICE}:${GITHUB_SHA}"
+          echo "IMAGE=${IMAGE}" >> "${GITHUB_ENV}"
+          gcloud builds submit --tag "${IMAGE}"
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        run: |
+          gcloud run deploy "${GCP_BACKEND_SERVICE}" \
+            --image "${IMAGE}" \
+            --platform managed \
+            --region "${GCP_REGION}" \
+            --allow-unauthenticated \
+            --min-instances 0 \
+            --max-instances 1 \
+            --memory 512Mi \
+            --set-env-vars "ARTICLE_STORE=firestore,FIRESTORE_PROJECT_ID=${GCP_PROJECT_ID},ARTICLES_COLLECTION=${ARTICLES_COLLECTION}"
+
+          URL="$(gcloud run services describe "${GCP_BACKEND_SERVICE}" --region "${GCP_REGION}" --format='value(status.url)')"
+          echo "service_url=${URL}" >> "${GITHUB_OUTPUT}"
 
   smoke-production:
     runs-on: ubuntu-latest

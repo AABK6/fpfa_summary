@@ -21,7 +21,7 @@ Examples:
 ```bash
 flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:5000
 flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8000
-flutter build web --dart-define=API_BASE_URL=https://ppfflaskapp.azurewebsites.net
+flutter build web --dart-define=API_BASE_URL=https://fpfa-summary-api-1028212947283.europe-west1.run.app
 ```
 
 ## Local Development
@@ -35,7 +35,7 @@ flutter run
 
 ## Deployment Paths
 
-- Web: Azure Static Web Apps via `.github/workflows/deploy_flutter_static_web_apps.yml`
+- Web: Firebase Hosting via `.github/workflows/deploy_flutter_static_web_apps.yml`
 - Android APK distribution: Firebase App Distribution via `.github/workflows/deploy_android.yml`
 
-There is Firebase configuration in the Android app, but the repository does not contain a Firebase Hosting deployment for the Flutter web build.
+The web deployment is now GCP / Firebase-native and no longer targets Azure Static Web Apps.

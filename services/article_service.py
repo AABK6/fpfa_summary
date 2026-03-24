@@ -33,7 +33,7 @@ class ArticleService:
 
 
 _cached_service: ArticleService | None = None
-_cached_key: tuple[str | None, str | None, str | None] | None = None
+_cached_key: tuple[str | None, str | None, str | None, str | None, str | None, str | None] | None = None
 
 
 def get_cached_article_service() -> ArticleService:
@@ -42,6 +42,9 @@ def get_cached_article_service() -> ArticleService:
         os.getenv("DATABASE_URL"),
         os.getenv("ARTICLES_DB_PATH"),
         os.getenv("FPFA_DB_PATH"),
+        os.getenv("ARTICLE_STORE"),
+        os.getenv("FIRESTORE_PROJECT_ID"),
+        os.getenv("ARTICLES_COLLECTION"),
     )
     if _cached_service is None or _cached_key != key:
         _cached_service = ArticleService()

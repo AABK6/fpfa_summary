@@ -10,31 +10,38 @@ This README reflects the repository as it exists on March 24, 2026.
 - `summarize_fp.py`: Foreign Policy ingestion script.
 - `app.py`: Flask API and server-rendered homepage, default local port `5000`.
 - `main.py`: FastAPI variant of the API, default local port `8000`.
-- `services/`: DB access, publication-date normalization, service layer.
+- `services/`: article storage, publication-date normalization, service layer.
 - `scripts/`: migration, parser canary, smoke tests, repair utilities.
 - `fpfa_app/`: Flutter client for web/mobile.
 
 ## Verified Deployment Topology
 
-There are multiple runtimes in this repo. They do not all run in the same place.
+The repository is now wired for the cheapest practical GCP path:
 
 | Component | Where it runs | Defined by |
 | --- | --- | --- |
-| Scheduled ingestion (`Update articles`) | GitHub-hosted Actions runner (`ubuntu-latest`) | `.github/workflows/update_articles.yml` |
-| Backend deploy CI | GitHub-hosted Actions runner (`ubuntu-latest`) | `.github/workflows/master_ppfflaskapp.yml` |
-| Production backend target | Azure Web App (`PPFFlaskApp` by default) | `.github/workflows/master_ppfflaskapp.yml` |
-| Production web frontend target | Azure Static Web Apps | `.github/workflows/deploy_flutter_static_web_apps.yml` |
+| Scheduled ingestion (`Update articles`) | GitHub-hosted Actions runner writing into GCP Firestore | `.github/workflows/update_articles.yml` |
+| Backend deploy CI | GitHub-hosted Actions runner | `.github/workflows/master_ppfflaskapp.yml` |
+| Production backend target | Google Cloud Run | `.github/workflows/master_ppfflaskapp.yml` |
+| Production web frontend target | Firebase Hosting | `.github/workflows/deploy_flutter_static_web_apps.yml` + `firebase.json` |
 | Android distribution | Firebase App Distribution | `.github/workflows/deploy_android.yml` |
-| Database in CI / production | Remote DB via `DATABASE_URL` secret, intended for Azure SQL | workflow env + deployment notes |
-| Local development database | SQLite `articles.db` unless env overrides it | `services/article_repository.py` |
+| Production article store | Firestore Native (`articles` collection by default) | `services/article_repository.py` + workflow env |
+| Local development store | SQLite `articles.db` unless env overrides it | `services/article_repository.py` |
 
 Important clarification:
 
-- There is Firebase usage in this repo, but not for web hosting.
-- The active web deployment workflow targets Azure Static Web Apps.
-- The active Google/Firebase integration is Android APK distribution plus Firebase project metadata files.
+- Azure is no longer the intended production path in this branch.
+- The backend and frontend deployment workflows now target GCP / Firebase.
+- The scheduled ingestion job still runs on GitHub Actions because that is the lowest-bill runner, but it writes into Firestore in GCP.
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full operations view.
+
+## Why This Is The Lowest-Bill Setup
+
+- Cloud Run can scale to zero, so there is no always-on VM bill for the API.
+- Firestore avoids the baseline monthly cost of Cloud SQL.
+- Firebase Hosting is the cheapest fit for the static Flutter web build.
+- Android distribution stays on Firebase App Distribution, which the repo already used.
 
 ## Running Locally
 
@@ -70,20 +77,24 @@ python main.py
   - `GET /docs`
   - `GET /redoc`
 
-## Database Behavior
+## Storage Behavior
 
-- If `DATABASE_URL` is set, the backend and ingestion scripts use that remote database.
-- Otherwise they use local SQLite.
+- If `ARTICLE_STORE=firestore`, the backend and ingestion scripts use Firestore.
+- Firestore config comes from:
+  - `FIRESTORE_PROJECT_ID`
+  - `ARTICLES_COLLECTION` (default: `articles`)
+- If `DATABASE_URL` is set to a SQLAlchemy/SQLite URL, the backend uses that database.
+- Otherwise the app falls back to local SQLite.
 - Local SQLite path resolution:
   - `ARTICLES_DB_PATH`
   - `FPFA_DB_PATH`
   - fallback: `articles.db` in the repo root
 
-The DB access layer lives in `services/article_repository.py`.
+The storage layer lives in `services/article_repository.py`.
 
 ## Running Ingestion Scripts
 
-These are the ingestion entrypoints currently wired into GitHub Actions:
+These are the ingestion entrypoints wired into GitHub Actions:
 
 ```bash
 python summarize_fa_hardened.py 7
@@ -96,13 +107,23 @@ Required environment for real summarization:
 export GEMINI_API_KEY=your_key_here
 ```
 
-Optional remote DB:
+Firestore target:
 
 ```bash
-export DATABASE_URL=your_connection_string_here
+export ARTICLE_STORE=firestore
+export FIRESTORE_PROJECT_ID=pressreview-458312
+export ARTICLES_COLLECTION=articles
 ```
 
-## Running the Flutter App
+Local SQLite fallback:
+
+```bash
+unset ARTICLE_STORE
+unset FIRESTORE_PROJECT_ID
+python summarize_fa_hardened.py 1
+```
+
+## Running The Flutter App
 
 From `fpfa_app/`:
 
@@ -122,6 +143,7 @@ Examples:
 ```bash
 flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:5000
 flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8000
+flutter build web --dart-define=API_BASE_URL=https://fpfa-summary-api-1028212947283.europe-west1.run.app
 ```
 
 If you run `app.py`, pass `API_BASE_URL=http://localhost:5000`.
@@ -139,7 +161,7 @@ Targeted checks:
 
 ```bash
 python scripts/live_parser_canary.py
-python scripts/smoke_test_api.py --base-url https://your-app.azurewebsites.net
+python scripts/smoke_test_api.py --base-url https://fpfa-summary-api-1028212947283.europe-west1.run.app
 ```
 
 Flutter:
@@ -150,14 +172,13 @@ flutter analyze
 flutter test
 ```
 
-## Notes on Legacy / Ambiguous Files
+## Firebase / GCP Files
 
-- `.firebaserc` points to Firebase project `pressreview-458312`.
-- `fpfa_app/android/app/google-services.json` is present.
-- `.github/workflows/deploy_android.yml` uploads Android APKs to Firebase App Distribution.
-- There is no Firebase Hosting workflow in this repo.
-- `firebase-debug.log` is a local debug artifact and is ignored by git.
+- `.firebaserc`: default Firebase project `pressreview-458312`
+- `firebase.json`: Firebase Hosting config for the Flutter web build
+- `fpfa_app/android/app/google-services.json`: Android Firebase config
+- `.github/workflows/deploy_android.yml`: APK distribution to Firebase App Distribution
 
 ## Current Documentation Scope
 
-Older notes in the repo describe a broader refactor and an `fpfa` package/CLI. That package is not present in this branch, so this README documents only the code and workflows that are actually checked in.
+Older notes in the repo still mention Azure App Service / Azure Static Web Apps. Those are legacy notes, not the active deployment target after this GCP migration.

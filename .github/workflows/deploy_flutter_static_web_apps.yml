@@ -1,4 +1,4 @@
-name: Deploy Flutter Web to Azure Static Web Apps
+name: Deploy Flutter Web to Firebase Hosting
 
 on:
   push:
@@ -6,8 +6,13 @@ on:
       - master
     paths:
       - fpfa_app/**
+      - firebase.json
+      - .firebaserc
       - .github/workflows/deploy_flutter_static_web_apps.yml
   workflow_dispatch:
+
+env:
+  API_BASE_URL_PROD: ${{ vars.API_BASE_URL_PROD || 'https://fpfa-summary-api-1028212947283.europe-west1.run.app' }}
 
 jobs:
   test-web:
@@ -57,18 +62,13 @@ jobs:
         run: flutter pub get
         working-directory: fpfa_app
 
-      - name: Build web (production API URL)
-        env:
-          API_BASE_URL: ${{ vars.API_BASE_URL_PROD || 'https://ppfflaskapp.azurewebsites.net' }}
-        run: flutter build web --dart-define=API_BASE_URL=${API_BASE_URL}
+      - name: Build web
+        run: flutter build web --dart-define=API_BASE_URL=${API_BASE_URL_PROD}
         working-directory: fpfa_app
 
-      - name: Deploy to Azure Static Web Apps (Production)
-        uses: Azure/static-web-apps-deploy@v1
+      - name: Deploy to Firebase Hosting
+        uses: w9jds/firebase-action@master
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_PROD }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: upload
-          app_location: fpfa_app/build/web
-          production_branch: master
-          skip_app_build: true
+          args: deploy --only hosting
+        env:
+          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}

@@ -9,14 +9,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import insert
-from sqlalchemy.exc import IntegrityError
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from services.article_repository import ArticleRepository, articles_table, resolve_articles_db_path
+from services.article_repository import ArticleRepository, resolve_articles_db_path
 from services.publication_dates import coerce_publication_date
 
 
@@ -93,28 +90,29 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def migrate_rows(rows: list[dict[str, Any]], repo: ArticleRepository, batch_size: int = 500) -> tuple[int, int]:
+    del batch_size
     inserted = 0
     skipped = 0
 
     normalized_rows = [_normalize_row(row) for row in rows]
 
-    with repo.engine.begin() as conn:
-        for start in range(0, len(normalized_rows), batch_size):
-            chunk = normalized_rows[start : start + batch_size]
-            try:
-                conn.execute(insert(articles_table), chunk)
-                inserted += len(chunk)
-                continue
-            except IntegrityError:
-                pass
-
-            # Fallback for duplicate-heavy chunks: retry row-by-row to keep progress.
-            for payload in chunk:
-                try:
-                    conn.execute(insert(articles_table), payload)
-                    inserted += 1
-                except IntegrityError:
-                    skipped += 1
+    for payload in normalized_rows:
+        was_inserted = repo.insert_article(
+            source=payload["source"],
+            url=payload["url"],
+            title=payload["title"],
+            author=payload["author"],
+            article_text=payload["article_text"],
+            core_thesis=payload["core_thesis"],
+            detailed_abstract=payload["detailed_abstract"],
+            supporting_data_quotes=payload["supporting_data_quotes"],
+            publication_date=payload["publication_date"],
+            date_added=payload["date_added"],
+        )
+        if was_inserted:
+            inserted += 1
+        else:
+            skipped += 1
     return inserted, skipped
 
 
