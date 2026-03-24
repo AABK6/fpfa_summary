@@ -1,153 +1,163 @@
-# Foreign Policy & Foreign Affairs Summaries
+# FPFA Summary
 
-This repository contains a small Flask backend that serves article summaries from `articles.db` and a Flutter front-end (`fpfa_app`) that displays them.
+Foreign Policy / Foreign Affairs article ingestion plus a small API and Flutter client.
 
-## Running the backend
+This README reflects the repository as it exists on March 24, 2026.
+
+## Repository Structure
+
+- `summarize_fa_hardened.py`: Foreign Affairs ingestion script.
+- `summarize_fp.py`: Foreign Policy ingestion script.
+- `app.py`: Flask API and server-rendered homepage, default local port `5000`.
+- `main.py`: FastAPI variant of the API, default local port `8000`.
+- `services/`: DB access, publication-date normalization, service layer.
+- `scripts/`: migration, parser canary, smoke tests, repair utilities.
+- `fpfa_app/`: Flutter client for web/mobile.
+
+## Verified Deployment Topology
+
+There are multiple runtimes in this repo. They do not all run in the same place.
+
+| Component | Where it runs | Defined by |
+| --- | --- | --- |
+| Scheduled ingestion (`Update articles`) | GitHub-hosted Actions runner (`ubuntu-latest`) | `.github/workflows/update_articles.yml` |
+| Backend deploy CI | GitHub-hosted Actions runner (`ubuntu-latest`) | `.github/workflows/master_ppfflaskapp.yml` |
+| Production backend target | Azure Web App (`PPFFlaskApp` by default) | `.github/workflows/master_ppfflaskapp.yml` |
+| Production web frontend target | Azure Static Web Apps | `.github/workflows/deploy_flutter_static_web_apps.yml` |
+| Android distribution | Firebase App Distribution | `.github/workflows/deploy_android.yml` |
+| Database in CI / production | Remote DB via `DATABASE_URL` secret, intended for Azure SQL | workflow env + deployment notes |
+| Local development database | SQLite `articles.db` unless env overrides it | `services/article_repository.py` |
+
+Important clarification:
+
+- There is Firebase usage in this repo, but not for web hosting.
+- The active web deployment workflow targets Azure Static Web Apps.
+- The active Google/Firebase integration is Android APK distribution plus Firebase project metadata files.
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full operations view.
+
+## Running Locally
+
+Install Python dependencies:
 
 ```bash
 pip install -r requirements.txt
+```
+
+### Flask app
+
+```bash
 python app.py
 ```
 
-The API will be available at `http://localhost:5000/api/articles` by default.
+- Binds to `http://localhost:5000`
+- Endpoints:
+  - `GET /health`
+  - `GET /api/articles`
+  - `GET /`
 
-Database runtime behavior:
-- If `DATABASE_URL` is set, backend and ingestion use that remote database.
-- Otherwise they use local SQLite at `ARTICLES_DB_PATH` (or `articles.db` by default).
-
-## CLI and pipeline
-
-Run the unified pipeline and scrapers without starting the server:
+### FastAPI app
 
 ```bash
-# List latest URLs per source
-python -m fpfa.cli crawl fa --limit 3
-python -m fpfa.cli crawl fp --limit 3
+python main.py
+```
 
-# Run end-to-end (Foreign Affairs + Foreign Policy)
-# Requires GEMINI_API_KEY unless using --stub or --dry-run
+- Binds to `http://localhost:8000`
+- Endpoints:
+  - `GET /health`
+  - `GET /api/articles`
+  - `GET /`
+  - `GET /docs`
+  - `GET /redoc`
+
+## Database Behavior
+
+- If `DATABASE_URL` is set, the backend and ingestion scripts use that remote database.
+- Otherwise they use local SQLite.
+- Local SQLite path resolution:
+  - `ARTICLES_DB_PATH`
+  - `FPFA_DB_PATH`
+  - fallback: `articles.db` in the repo root
+
+The DB access layer lives in `services/article_repository.py`.
+
+## Running Ingestion Scripts
+
+These are the ingestion entrypoints currently wired into GitHub Actions:
+
+```bash
+python summarize_fa_hardened.py 7
+python summarize_fp.py 7
+```
+
+Required environment for real summarization:
+
+```bash
 export GEMINI_API_KEY=your_key_here
-python -m fpfa.cli run --sources fa,fp --limit 3
-
-# Use stub summarizer (no LLM calls) and persist
-python -m fpfa.cli run --sources fa --limit 2 --stub
-
-# Dry run (no DB writes, stub summarizer)
-python -m fpfa.cli run --sources fp --limit 2 --dry-run
-
-# Enable detailed logs
-python -m fpfa.cli run --sources fa,fp --limit 3 --verbose
-# or very detailed
-python -m fpfa.cli run --sources fa --limit 1 --debug
-# or explicit level
-python -m fpfa.cli run --sources fp --limit 2 --log-level INFO
 ```
 
-Environment config:
-- `FPFA_DB_PATH`: Path to the SQLite DB (defaults to `articles.db` in project root)
-- `FPFA_MODEL_CORE`, `FPFA_MODEL_DETAIL`, `FPFA_MODEL_QUOTES`: Override Gemini model IDs
-
-## Migrations
-
-The backend now stores quotes in both the legacy `supporting_data_quotes` field and a new `quotes_json` column.
-To backfill existing rows:
+Optional remote DB:
 
 ```bash
-python -m fpfa.cli migrate quotes-json
+export DATABASE_URL=your_connection_string_here
 ```
 
-## Running the Flutter app
+## Running the Flutter App
 
-From the `fpfa_app` directory, run `flutter run`. The app expects the backend URL specified by the `API_BASE_URL` compile-time environment variable. If none is supplied, it defaults to `http://localhost:5000` (or `http://10.0.2.2:5000` when running on the Android emulator).
-
-Example:
+From `fpfa_app/`:
 
 ```bash
-flutter run -d chrome --dart-define=API_BASE_URL=http://192.168.1.100:5000
+flutter pub get
+flutter run
 ```
 
-## Troubleshooting
-If the Flutter app displays **"Failed to load articles"**, confirm the backend is reachable and that the app is using the correct API URL.
+The Flutter app resolves its backend base URL like this:
 
-1. Start the Flask server (from this directory):
-   ```bash
-   pip install -r requirements.txt
-   python app.py
-   ```
-2. Verify the endpoint returns data:
-   ```bash
-   curl http://localhost:5000/api/articles | head
-   ```
-   You should see JSON output.
-3. Run the Flutter app with an explicit API URL (adjust if the server runs elsewhere):
-   ```bash
-   flutter run -d edge --dart-define=API_BASE_URL=http://localhost:5000
-   ```
-4. Ensure `articles.db` exists in the project root so the backend can read the database.
+- `API_BASE_URL` compile-time define if provided
+- otherwise Android emulator fallback: `http://10.0.2.2:8000`
+- otherwise local fallback: `http://localhost:8000`
 
-## Testing
-
-This repo includes pytest tests for scrapers, API, and the pipeline.
+Examples:
 
 ```bash
-pytest -q
+flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:5000
+flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8000
 ```
 
-Additional deployment-oriented checks:
+If you run `app.py`, pass `API_BASE_URL=http://localhost:5000`.
+If you run `main.py`, the Flutter default already matches port `8000`.
+
+## Tests
+
+Run the Python test suite:
 
 ```bash
-# Parser canary against live source sites
+pytest tests -q
+```
+
+Targeted checks:
+
+```bash
 python scripts/live_parser_canary.py
-
-# API smoke check against a deployed base URL
 python scripts/smoke_test_api.py --base-url https://your-app.azurewebsites.net
 ```
 
-Tests avoid network calls by using HTML fixtures and a stub summarizer.
-
-Live (network) tests are available but skipped by default. To enable them:
+Flutter:
 
 ```bash
-export LIVE_TESTS=1
-pytest -m live -q
+cd fpfa_app
+flutter analyze
+flutter test
 ```
 
-These tests fetch real pages from Foreign Affairs and Foreign Policy to verify selectors and parsing.
+## Notes on Legacy / Ambiguous Files
 
-### Quick commands
+- `.firebaserc` points to Firebase project `pressreview-458312`.
+- `fpfa_app/android/app/google-services.json` is present.
+- `.github/workflows/deploy_android.yml` uploads Android APKs to Firebase App Distribution.
+- There is no Firebase Hosting workflow in this repo.
+- `firebase-debug.log` is a local debug artifact and is ignored by git.
 
-- Run all offline tests (no network):
-  ```bash
-  pytest -q
-  ```
-- Run only scraper unit tests (fixtures):
-  ```bash
-  pytest tests/test_scrapers.py -q
-  ```
-- Run API tests against the app factory (temp SQLite DB):
-  ```bash
-  pytest tests/test_api_factory.py -q
-  ```
-- Run pipeline integration (stub summarizer, no network):
-  ```bash
-  pytest tests/test_pipeline.py -q
-  ```
-- Run live scraper tests (real websites):
-  ```bash
-  export LIVE_TESTS=1
-  pytest tests/test_live_scrapers.py -q
-  ```
-- Run live pipeline dry-run (no DB writes):
-  ```bash
-  export LIVE_TESTS=1
-  pytest tests/test_live_pipeline.py -q
-  ```
-- Run live server endpoint test (requires backend running on `http://localhost:5000`):
-  ```bash
-  # In one terminal
-  python app.py
+## Current Documentation Scope
 
-  # In another terminal
-  export LIVE_TESTS=1
-  pytest tests/test_api.py -q
-  ```
+Older notes in the repo describe a broader refactor and an `fpfa` package/CLI. That package is not present in this branch, so this README documents only the code and workflows that are actually checked in.
