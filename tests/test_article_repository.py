@@ -11,7 +11,20 @@ def test_resolve_database_url_prefers_database_url(monkeypatch):
     assert resolve_database_url() == "sqlite:////tmp/runtime.db"
 
 
-def test_normalize_database_url_converts_sqlserver_url_to_pymssql():
+def test_normalize_database_url_uses_pyodbc_for_sqlserver_url_when_available(monkeypatch):
+    monkeypatch.setattr("services.article_repository._pyodbc_usable", lambda: True)
+    assert (
+        normalize_database_url(
+            "sqlserver://user:pass@example.database.windows.net:1433/fpfa"
+            "?driver=ODBC+Driver+18+for+SQL+Server"
+        )
+        == "mssql+pyodbc://user:pass@example.database.windows.net:1433/fpfa"
+        "?driver=ODBC+Driver+18+for+SQL+Server"
+    )
+
+
+def test_normalize_database_url_converts_sqlserver_url_to_pymssql_when_pyodbc_unavailable(monkeypatch):
+    monkeypatch.setattr("services.article_repository._pyodbc_usable", lambda: False)
     assert (
         normalize_database_url(
             "sqlserver://user:pass@example.database.windows.net:1433/fpfa"
@@ -21,7 +34,16 @@ def test_normalize_database_url_converts_sqlserver_url_to_pymssql():
     )
 
 
-def test_normalize_database_url_converts_connection_string_to_pymssql():
+def test_normalize_database_url_uses_odbc_connect_wrapper_when_pyodbc_available(monkeypatch):
+    monkeypatch.setattr("services.article_repository._pyodbc_usable", lambda: True)
+    assert normalize_database_url(
+        "Server=tcp:example.database.windows.net,1433;Database=fpfa;"
+        "Uid=user;Pwd=pass;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+    ).startswith("mssql+pyodbc:///?odbc_connect=")
+
+
+def test_normalize_database_url_converts_connection_string_to_pymssql_when_pyodbc_unavailable(monkeypatch):
+    monkeypatch.setattr("services.article_repository._pyodbc_usable", lambda: False)
     assert (
         normalize_database_url(
             "Server=tcp:example.database.windows.net,1433;Database=fpfa;"
@@ -31,7 +53,18 @@ def test_normalize_database_url_converts_connection_string_to_pymssql():
     )
 
 
-def test_normalize_database_url_converts_odbc_connect_wrapper_to_pymssql():
+def test_normalize_database_url_preserves_odbc_connect_wrapper_when_pyodbc_available(monkeypatch):
+    monkeypatch.setattr("services.article_repository._pyodbc_usable", lambda: True)
+    value = (
+        "mssql+pyodbc:///?odbc_connect="
+        "Server%3Dtcp%3Aexample.database.windows.net%2C1433%3B"
+        "Database%3Dfpfa%3BUid%3Duser%3BPwd%3Dpass%3BEncrypt%3Dyes%3B"
+    )
+    assert normalize_database_url(value) == value
+
+
+def test_normalize_database_url_converts_odbc_connect_wrapper_to_pymssql_when_pyodbc_unavailable(monkeypatch):
+    monkeypatch.setattr("services.article_repository._pyodbc_usable", lambda: False)
     assert (
         normalize_database_url(
             "mssql+pyodbc:///?odbc_connect="

@@ -44,6 +44,14 @@ def resolve_articles_db_path() -> str:
     return str(repo_root / "articles.db")
 
 
+def _pyodbc_usable() -> bool:
+    try:
+        import pyodbc  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
 def normalize_database_url(raw_url: str) -> str:
     """Normalize common SQL Server connection-string formats to SQLAlchemy URLs."""
     value = raw_url.strip()
@@ -121,6 +129,8 @@ def normalize_database_url(raw_url: str) -> str:
         )
 
     if value.startswith("mssql+pyodbc:///?odbc_connect="):
+        if _pyodbc_usable():
+            return value
         parsed = urlparse(value)
         encoded_connection_string = parse_qs(parsed.query).get("odbc_connect", [None])[0]
         if encoded_connection_string:
@@ -128,7 +138,22 @@ def normalize_database_url(raw_url: str) -> str:
             if converted:
                 return converted
 
-    if value.startswith("sqlserver://") or value.startswith("mssql+pyodbc://"):
+    if value.startswith("sqlserver://"):
+        if _pyodbc_usable():
+            return "mssql+pyodbc://" + value[len("sqlserver://") :]
+        parsed = urlparse(value)
+        if parsed.hostname and parsed.path:
+            return _build_pymssql_url(
+                host=parsed.hostname,
+                port=str(parsed.port) if parsed.port else None,
+                database=parsed.path.lstrip("/"),
+                username=parsed.username,
+                password=parsed.password,
+            )
+
+    if value.startswith("mssql+pyodbc://"):
+        if _pyodbc_usable():
+            return value
         parsed = urlparse(value)
         if parsed.hostname and parsed.path:
             return _build_pymssql_url(
@@ -143,6 +168,8 @@ def normalize_database_url(raw_url: str) -> str:
         return value
 
     if "Server=" in value and "Database=" in value:
+        if _pyodbc_usable():
+            return f"mssql+pyodbc:///?odbc_connect={quote_plus(value)}"
         converted = _pymssql_url_from_connection_string(value)
         if converted:
             return converted
