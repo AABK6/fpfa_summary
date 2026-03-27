@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
+import sys
 import summarize_fa_hardened
 import summarize_fp
 
@@ -155,6 +156,92 @@ class TestSummarizeFP(unittest.TestCase):
             "https://foreignpolicy.com/2026/02/19/test-article/"
         )
         self.assertEqual(result["publication_date"], "2026-02-19")
+
+    @patch("summarize_fp.scrape_foreignpolicy_article")
+    def test_collect_eligible_articles_stops_after_requested_count(self, mock_scrape_article):
+        mock_scrape_article.side_effect = [
+            {
+                "title": "Eligible One",
+                "author": "Author",
+                "text": "A" * 1200,
+                "publication_date": "2026-03-27",
+                "content_warning": None,
+            },
+            {
+                "title": "Truncated",
+                "author": "Author",
+                "text": "short",
+                "publication_date": "2026-03-27",
+                "content_warning": "possibly_truncated",
+            },
+            {
+                "title": "Eligible Two",
+                "author": "Author",
+                "text": "B" * 1200,
+                "publication_date": "2026-03-27",
+                "content_warning": None,
+            },
+            {
+                "title": "Unused",
+                "author": "Author",
+                "text": "C" * 1200,
+                "publication_date": "2026-03-27",
+                "content_warning": None,
+            },
+        ]
+
+        articles, truncated_skips, scrape_failures = summarize_fp.collect_eligible_articles(
+            ["url-1", "url-2", "url-3", "url-4"],
+            desired_count=2,
+        )
+
+        self.assertEqual(len(articles), 2)
+        self.assertEqual([article["url"] for article in articles], ["url-1", "url-3"])
+        self.assertEqual(truncated_skips, 1)
+        self.assertEqual(scrape_failures, 0)
+        self.assertEqual(mock_scrape_article.call_count, 3)
+
+    @patch("summarize_fp.resolve_articles_db_path", return_value=":memory:")
+    @patch("summarize_fp.init_db")
+    @patch("summarize_fp.scrape_foreignpolicy_article")
+    @patch("summarize_fp.scrape_foreignpolicy_article_list")
+    def test_main_treats_all_truncated_candidates_as_noop(
+        self,
+        mock_scrape_article_list,
+        mock_scrape_article,
+        mock_init_db,
+        _mock_resolve_path,
+    ):
+        mock_scrape_article_list.return_value = [f"url-{index}" for index in range(10)]
+        mock_scrape_article.side_effect = [
+            {
+                "title": f"Title {index}",
+                "author": "Author",
+                "text": "short",
+                "publication_date": "2026-03-27",
+                "content_warning": "possibly_truncated",
+            }
+            for index in range(10)
+        ]
+
+        mock_repo = MagicMock()
+        mock_init_db.return_value = mock_repo
+
+        with patch.object(sys, "argv", ["summarize_fp.py", "2"]):
+            with patch("builtins.print") as mock_print:
+                summarize_fp.main()
+
+        mock_scrape_article_list.assert_called_once_with(10)
+        mock_repo.close.assert_called_once()
+        printed_lines = [
+            call.args[0]
+            for call in mock_print.call_args_list
+            if call.args and isinstance(call.args[0], str)
+        ]
+        self.assertTrue(
+            any("Treating this run as a no-op." in line for line in printed_lines),
+            printed_lines,
+        )
 
 if __name__ == '__main__':
     unittest.main()

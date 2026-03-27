@@ -149,6 +149,45 @@ def _is_likely_truncated(article_body: str) -> bool:
     return len(article_body) < 900 and len(paragraphs) < 3
 
 
+def _candidate_fetch_count(target_count: int) -> int:
+    """Over-fetch candidate URLs so truncation-skipped articles don't fail the batch."""
+    return max(target_count * 3, 10)
+
+
+def collect_eligible_articles(article_urls: list[str], desired_count: int) -> tuple[list[dict], int, int]:
+    """
+    Scrape candidate URLs and keep up to the requested number of eligible articles.
+
+    Returns:
+        (eligible_articles, skipped_for_truncation, scrape_failures)
+    """
+    articles_data: list[dict] = []
+    truncated_skips = 0
+    scrape_failures = 0
+
+    for url in article_urls:
+        print(f"Scraping article from: {url}")
+        article_data = scrape_foreignpolicy_article(url)
+        if not article_data:
+            scrape_failures += 1
+            print(f"Failed to scrape article from: {url}")
+            continue
+
+        article_data["url"] = url
+        if article_data.get("content_warning"):
+            truncated_skips += 1
+            print(f"[WARN] Extracted content may be truncated for URL: {url}")
+            if not ALLOW_TRUNCATED_CONTENT:
+                print(f"[SKIP] Skipping potentially truncated article: {url}")
+                continue
+
+        articles_data.append(article_data)
+        if len(articles_data) >= desired_count:
+            break
+
+    return articles_data, truncated_skips, scrape_failures
+
+
 """
 Usage:
     python summarize_fp.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]
@@ -348,7 +387,9 @@ def main():
             print("       Please provide a valid integer for the number of articles.")
             sys.exit(1)
 
-    article_urls = scrape_foreignpolicy_article_list(num_articles_to_summarize)
+    article_urls = scrape_foreignpolicy_article_list(
+        _candidate_fetch_count(num_articles_to_summarize)
+    )
 
     if not article_urls:
         print("No article URLs found. Exiting.")
@@ -357,25 +398,30 @@ def main():
     # === Initialize Database (MINIMAL ADDITION) ===
     conn = init_db(resolve_articles_db_path())
 
-    articles_data = []
-    for url in article_urls:
-        print(f"Scraping article from: {url}")
-        article_data = scrape_foreignpolicy_article(url)
-        if article_data:
-            # Attach the URL to the data so we can store and check it
-            article_data["url"] = url
-            if article_data.get("content_warning"):
-                print(f"[WARN] Extracted content may be truncated for URL: {url}")
-                if not ALLOW_TRUNCATED_CONTENT:
-                    print(f"[SKIP] Skipping potentially truncated article: {url}")
-                    continue
-            articles_data.append(article_data)
-        else:
-            print(f"Failed to scrape article from: {url}")
+    articles_data, truncated_skips, scrape_failures = collect_eligible_articles(
+        article_urls,
+        num_articles_to_summarize,
+    )
 
     if not articles_data:
+        if truncated_skips > 0 and scrape_failures == 0 and not ALLOW_TRUNCATED_CONTENT:
+            print(
+                "[WARN] No eligible Foreign Policy articles passed the truncation guard "
+                f"after screening {len(article_urls)} candidates; skipped={truncated_skips}. "
+                "Treating this run as a no-op."
+            )
+            conn.close()
+            return
+
         print("No article data eligible for summarization (scrape failure or truncation guard). Exiting.")
+        conn.close()
         sys.exit(1)
+
+    if len(articles_data) < num_articles_to_summarize:
+        print(
+            f"[WARN] Proceeding with {len(articles_data)} eligible Foreign Policy articles "
+            f"out of requested {num_articles_to_summarize}."
+        )
 
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
