@@ -1,6 +1,7 @@
 name: Update articles
 permissions:
   contents: read
+  id-token: write
 
 on:
   schedule:
@@ -8,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'pressreview-458312' }}
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'ppf-fpfa-summary-prod' }}
   ARTICLES_COLLECTION: ${{ vars.ARTICLES_COLLECTION || 'articles' }}
 
 jobs:
@@ -17,7 +18,7 @@ jobs:
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       ARTICLE_STORE: firestore
-      FIRESTORE_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'pressreview-458312' }}
+      FIRESTORE_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'ppf-fpfa-summary-prod' }}
       ARTICLES_COLLECTION: ${{ vars.ARTICLES_COLLECTION || 'articles' }}
 
     steps:
@@ -27,7 +28,8 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_INGEST_SERVICE_ACCOUNT }}
 
       - name: Set up Python
         uses: actions/setup-python@v5

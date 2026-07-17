@@ -12,7 +12,8 @@ on:
   workflow_dispatch:
 
 env:
-  API_BASE_URL_PROD: ${{ vars.API_BASE_URL_PROD || 'https://fpfa-summary-api-1028212947283.europe-west1.run.app' }}
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'ppf-fpfa-summary-prod' }}
+  API_BASE_URL_PROD: ${{ vars.API_BASE_URL_PROD || 'https://fpfa-summary-api-1076204999548.europe-west1.run.app' }}
 
 jobs:
   test-web:
@@ -47,9 +48,18 @@ jobs:
     needs: test-web
     environment:
       name: Production
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_FIREBASE_SERVICE_ACCOUNT }}
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -66,9 +76,8 @@ jobs:
         run: flutter build web --dart-define=API_BASE_URL=${API_BASE_URL_PROD}
         working-directory: fpfa_app
 
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
       - name: Deploy to Firebase Hosting
-        uses: w9jds/firebase-action@master
-        with:
-          args: deploy --only hosting
-        env:
-          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+        run: firebase deploy --project "${GCP_PROJECT_ID}" --only hosting --non-interactive

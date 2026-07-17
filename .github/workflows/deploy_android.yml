@@ -8,11 +8,24 @@ on:
       - '.github/workflows/deploy_android.yml'
   workflow_dispatch:
 
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'ppf-fpfa-summary-prod' }}
+  FIREBASE_ANDROID_APP_ID: ${{ vars.FIREBASE_ANDROID_APP_ID || '1:1076204999548:android:d3d96617e2156818764af9' }}
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_FIREBASE_SERVICE_ACCOUNT }}
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -33,9 +46,14 @@ jobs:
         run: flutter build apk --release
         working-directory: fpfa_app
 
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
       - name: Upload to Firebase App Distribution
-        uses: w9jds/firebase-action@master
-        with:
-          args: appdistribution:distribute fpfa_app/build/app/outputs/flutter-apk/app-release.apk --app 1:1028212947283:android:295bda3d6c89668cd549a6 --groups "testers"
-        env:
-          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+        run: >-
+          firebase appdistribution:distribute
+          fpfa_app/build/app/outputs/flutter-apk/app-release.apk
+          --app "${FIREBASE_ANDROID_APP_ID}"
+          --groups "testers"
+          --project "${GCP_PROJECT_ID}"
+          --non-interactive

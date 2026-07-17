@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
 
 env:
-  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'pressreview-458312' }}
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'ppf-fpfa-summary-prod' }}
   GCP_REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
   GCP_BACKEND_SERVICE: ${{ vars.GCP_BACKEND_SERVICE || 'fpfa-summary-api' }}
   GCP_ARTIFACT_REPOSITORY: ${{ vars.GCP_ARTIFACT_REPOSITORY || 'fpfa' }}
@@ -95,7 +95,8 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
@@ -125,6 +126,7 @@ jobs:
             --image "${IMAGE}" \
             --platform managed \
             --region "${GCP_REGION}" \
+            --service-account "${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}" \
             --allow-unauthenticated \
             --min-instances 0 \
             --max-instances 1 \
