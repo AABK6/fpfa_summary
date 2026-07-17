@@ -173,7 +173,7 @@ curl http://localhost:8000/api/articles
 ### Validate ingestion against Firestore
 
 ```bash
-export GEMINI_API_KEY=...
+export FPFA_GEMINI_API_KEY=...
 export ARTICLE_STORE=firestore
 export FIRESTORE_PROJECT_ID=pressreview-458312
 python summarize_fa_hardened.py 1
