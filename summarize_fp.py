@@ -423,10 +423,10 @@ def main():
             f"out of requested {num_articles_to_summarize}."
         )
 
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get("FPFA_GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        print("Error: GEMINI_API_KEY environment variable not set.")
-        print("Please set your Gemini API key as an environment variable named GEMINI_API_KEY.")
+        print("Error: FPFA_GEMINI_API_KEY environment variable not set.")
+        print("GEMINI_API_KEY remains supported only for cloud deployment compatibility.")
         sys.exit(1)
 
     client = create_client(api_key)

@@ -104,7 +104,7 @@ python summarize_fp.py 7
 Required environment for real summarization:
 
 ```bash
-export GEMINI_API_KEY=your_key_here
+export FPFA_GEMINI_API_KEY=your_key_here
 ```
 
 Firestore target:

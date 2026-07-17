@@ -286,9 +286,9 @@ def main():
         sys.exit(1)
 
     # 2. Summarise
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get("FPFA_GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        print("[ERROR] GEMINI_API_KEY env var not set.")
+        print("[ERROR] FPFA_GEMINI_API_KEY env var not set.")
         sys.exit(1)
     client = create_client(api_key)
 
