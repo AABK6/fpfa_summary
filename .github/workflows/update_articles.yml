@@ -8,6 +8,10 @@ on:
     - cron: '0 */4 * * *'
   workflow_dispatch:
 
+concurrency:
+  group: fpfa-article-ingestion
+  cancel-in-progress: false
+
 env:
   GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'ppf-fpfa-summary-prod' }}
   ARTICLES_COLLECTION: ${{ vars.ARTICLES_COLLECTION || 'articles' }}
@@ -16,7 +20,8 @@ jobs:
   run-scripts:
     runs-on: ubuntu-latest
     env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      FPFA_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      FPFA_GEMINI_MODEL: gemini-3.6-flash
       ARTICLE_STORE: firestore
       FIRESTORE_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'ppf-fpfa-summary-prod' }}
       ARTICLES_COLLECTION: ${{ vars.ARTICLES_COLLECTION || 'articles' }}
@@ -53,8 +58,5 @@ jobs:
       - name: Install Playwright browsers (FA fallback path)
         run: python -m playwright install --with-deps chromium
 
-      - name: Run Foreign Affairs ingestion
-        run: python summarize_fa_hardened.py 7
-
-      - name: Run Foreign Policy ingestion
-        run: python summarize_fp.py 7
+      - name: Collect articles and submit one Gemini Batch
+        run: python update_articles.py 7

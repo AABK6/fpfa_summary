@@ -2,8 +2,6 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import sys
-from google import genai
-from google.genai import types
 import os
 
 from models.sources import ArticleSource
@@ -292,88 +290,51 @@ def scrape_foreignpolicy_article_list(num_links=3):
                     break
     return article_urls
 
-def create_client(api_key: str) -> genai.Client:
-    """
-    Creates a Gemini Developer API client.
-    """
-    client = genai.Client(api_key=api_key)
-    return client
+def collect_new_articles(
+    repo,
+    desired_count: int,
+    *,
+    excluded_urls: set[str] | None = None,
+) -> list[dict]:
+    """Scrape eligible, not-yet-stored Foreign Policy articles."""
+    excluded = excluded_urls or set()
+    article_urls = scrape_foreignpolicy_article_list(
+        _candidate_fetch_count(desired_count)
+    )
+    if not article_urls:
+        print("[ERROR] No Foreign Policy URLs found; parser or access may have changed.")
+        return []
 
-def generate_core_thesis(client: genai.Client, article: dict) -> str:
-    """
-    Generates the Core Thesis in 1-2 sentences.
-    """
-    prompt = f"""
-    Task: Write 1-2 dense sentences capturing the main conclusion or central argument
-    of the above article, focusing only on the primary claim or takeaway without supporting details.
-    
-    Title: {article['title']}
-    Author: {article['author']}
-    Text: {article['text']}
-    """
+    candidates: list[str] = []
+    for url in article_urls:
+        if url in excluded:
+            print(f"[PENDING] Foreign Policy article already queued: {url}")
+            continue
+        cached = get_article_by_url(repo, url)
+        if cached:
+            title, author, *_ = cached
+            print(f"[CACHE] {title} by {author}")
+            continue
+        candidates.append(url)
 
-    try:
-        response = client.models.generate_content(
-            model='gemini-flash-latest',
-            contents=prompt
+    articles, truncated_skips, scrape_failures = collect_eligible_articles(
+        candidates,
+        desired_count,
+    )
+    if not articles and truncated_skips > 0 and scrape_failures == 0:
+        print(
+            "[WARN] No eligible Foreign Policy articles passed the truncation guard; "
+            f"skipped={truncated_skips}. Treating this source as a no-op."
         )
-        return response.text.strip()
-    except Exception as e:
-        print(f"Error generating core thesis: {e}")
-        return "Summary generation failed."
-
-def generate_detailed_abstract(client: genai.Client, article: dict) -> str:
-    """
-    Generates an abstract that expands on the core thesis.
-    """
-    prompt = f"""
-    Task: Provide 1-2 dense paragraphs summarizing the main arguments and points
-    of the article. Include essential background, the progression of ideas, and explain
-    any important concepts the article uses to develop its case.
-    Do not add anything else than the summary, and remove any unnecessary words.
-
-    Title: {article['title']}
-    Author: {article['author']}
-    Text: {article['text']}
-    """
-    try:
-        response = client.models.generate_content(
-            model='gemini-flash-latest',
-            contents=prompt
+    elif len(articles) < desired_count and candidates:
+        print(
+            f"[WARN] Collected {len(articles)} eligible Foreign Policy articles "
+            f"out of requested {desired_count}."
         )
-        return response.text.strip()
-    except Exception as e:
-        print(f"Error generating detailed abstract: {e}")
-        return "Summary generation failed."
+    return articles
 
 
-def generate_supporting_data_quotes(client: genai.Client, article: dict) -> str:
-    """
-    Highlights critical data points and direct quotes from the article.
-    """
-    prompt = f"""
-    Task: Extract and list:
-    - The most important factual data points or statistics from the article.
-    - 2-3 key direct quotes verbatim, capturing the article's ethos or perspective.
-
-    Present them as bullet points or a short list, preserving the article's original style in the quotes. Do not add anything esle than the bullet points.
-
-    Title: {article['title']}
-    Author: {article['author']}
-    Text: {article['text']}
-    """
-    try:
-        response = client.models.generate_content(
-            model='gemini-flash-latest',
-            contents=prompt
-        )
-        return response.text.strip()
-    except Exception as e:
-        print(f"Error generating supporting data/quotes: {e}")
-        return "Summary generation failed."
-
-
-def main():
+def main() -> int:
     if len(sys.argv) < 2:
         num_articles_to_summarize = 10
     else:
@@ -381,101 +342,18 @@ def main():
             num_articles_to_summarize = int(sys.argv[1])
             if num_articles_to_summarize <= 0:
                 print("Please provide a positive number of articles to summarize.")
-                sys.exit(1)
+                return 1
         except ValueError:
             print("Usage: python summarize_fp.py [NUMBER_OF_ARTICLES_TO_SUMMARIZE]")
             print("       Please provide a valid integer for the number of articles.")
-            sys.exit(1)
+            return 1
 
-    article_urls = scrape_foreignpolicy_article_list(
-        _candidate_fetch_count(num_articles_to_summarize)
+    from update_articles import run_batch_ingestion
+
+    return run_batch_ingestion(
+        limit=num_articles_to_summarize,
+        sources=(ArticleSource.FOREIGN_POLICY,),
     )
-
-    if not article_urls:
-        print("No article URLs found. Exiting.")
-        sys.exit(1)
-
-    # === Initialize Database (MINIMAL ADDITION) ===
-    conn = init_db(resolve_articles_db_path())
-
-    articles_data, truncated_skips, scrape_failures = collect_eligible_articles(
-        article_urls,
-        num_articles_to_summarize,
-    )
-
-    if not articles_data:
-        if truncated_skips > 0 and scrape_failures == 0 and not ALLOW_TRUNCATED_CONTENT:
-            print(
-                "[WARN] No eligible Foreign Policy articles passed the truncation guard "
-                f"after screening {len(article_urls)} candidates; skipped={truncated_skips}. "
-                "Treating this run as a no-op."
-            )
-            conn.close()
-            return
-
-        print("No article data eligible for summarization (scrape failure or truncation guard). Exiting.")
-        conn.close()
-        sys.exit(1)
-
-    if len(articles_data) < num_articles_to_summarize:
-        print(
-            f"[WARN] Proceeding with {len(articles_data)} eligible Foreign Policy articles "
-            f"out of requested {num_articles_to_summarize}."
-        )
-
-    api_key = os.environ.get("FPFA_GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("Error: FPFA_GEMINI_API_KEY environment variable not set.")
-        print("GEMINI_API_KEY remains supported only for cloud deployment compatibility.")
-        sys.exit(1)
-
-    client = create_client(api_key)
-
-    print("\n--- Article Summaries ---")
-    for article in articles_data:
-        # Check if article already in DB
-        existing_record = get_article_by_url(conn, article["url"])
-        if existing_record:
-            # If found in DB, just print what's stored
-            db_title, db_author, db_article_text, db_core_thesis, db_detailed_abstract, db_supporting_data_quotes = existing_record
-            print(f"\n--- ARTICLE (FROM DB): {db_title} by {db_author} ---")
-            print("\n=== CORE THESIS ===")
-            print(db_core_thesis)
-            print("\n=== DETAILED ABSTRACT ===")
-            print(db_detailed_abstract)
-            print("\n=== SUPPORTING DATA AND QUOTES ===")
-            print(db_supporting_data_quotes)
-            print("-" * 50)
-        else:
-            # Summarize and insert
-            print(f"\n--- ARTICLE: {article['title']} by {article['author']} ---")
-            core_thesis = generate_core_thesis(client, article)
-            detailed_abstract = generate_detailed_abstract(client, article)
-            supporting_data_quotes = generate_supporting_data_quotes(client, article)
-
-            print("\n=== CORE THESIS ===")
-            print(core_thesis)
-            print("\n=== DETAILED ABSTRACT ===")
-            print(detailed_abstract)
-            print("\n=== SUPPORTING DATA AND QUOTES ===")
-            print(supporting_data_quotes)
-            print("-" * 50)
-
-            # Store in DB
-            insert_article(
-                conn,
-                source=ArticleSource.FOREIGN_POLICY.value,
-                url=article["url"],
-                title=article["title"],
-                author=article["author"],
-                article_text=article["text"],  # Storing full text
-                core_thesis=core_thesis,
-                detailed_abstract=detailed_abstract,
-                supporting_data_quotes=supporting_data_quotes,
-                publication_date=article.get("publication_date"),
-            )
-
-    conn.close()
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

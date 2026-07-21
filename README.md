@@ -2,12 +2,15 @@
 
 Foreign Policy / Foreign Affairs article ingestion plus a small API and Flutter client.
 
-This README reflects the repository as it exists on March 24, 2026.
+This README reflects the repository as it exists on July 22, 2026.
 
 ## Repository Structure
 
-- `summarize_fa_hardened.py`: Foreign Affairs ingestion script.
-- `summarize_fp.py`: Foreign Policy ingestion script.
+- `update_articles.py`: shared asynchronous ingestion entrypoint.
+- `summarize_fa_hardened.py`: Foreign Affairs scraper and single-source compatibility entrypoint.
+- `summarize_fp.py`: Foreign Policy scraper and single-source compatibility entrypoint.
+- `services/gemini_summary_batch.py`: one structured summary request per article and Gemini Batch reconciliation.
+- `services/summary_batch_repository.py`: persistent batch ledger for Firestore or SQL/SQLite.
 - `app.py`: Flask API and server-rendered homepage, default local port `5000`.
 - `main.py`: FastAPI variant of the API, default local port `8000`.
 - `services/`: article storage, publication-date normalization, service layer.
@@ -94,7 +97,19 @@ The storage layer lives in `services/article_repository.py`.
 
 ## Running Ingestion Scripts
 
-These are the ingestion entrypoints wired into GitHub Actions:
+GitHub Actions calls one entrypoint for both publications:
+
+```bash
+python update_articles.py 7
+```
+
+Each run first retrieves results from earlier asynchronous jobs, then scrapes new
+articles and submits all of them in one Gemini Batch. Each article has one
+structured request returning the thesis, detailed abstract, and supporting facts
+and quotations. Completed results are normally written into the article store on
+the next four-hour run.
+
+The publication-specific commands remain available and use the same batch path:
 
 ```bash
 python summarize_fa_hardened.py 7
@@ -105,6 +120,7 @@ Required environment for real summarization:
 
 ```bash
 export FPFA_GEMINI_API_KEY=your_key_here
+export FPFA_GEMINI_MODEL=gemini-3.6-flash
 ```
 
 Firestore target:
