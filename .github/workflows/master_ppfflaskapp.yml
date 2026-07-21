@@ -11,6 +11,7 @@ on:
       - summarize_fa.py
       - summarize_fa_hardened.py
       - summarize_fp.py
+      - update_articles.py
       - models/**
       - services/**
       - scripts/**

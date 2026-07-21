@@ -1,6 +1,5 @@
 import unittest
 from unittest.mock import patch, MagicMock
-import sys
 import summarize_fa_hardened
 import summarize_fp
 
@@ -201,16 +200,12 @@ class TestSummarizeFP(unittest.TestCase):
         self.assertEqual(scrape_failures, 0)
         self.assertEqual(mock_scrape_article.call_count, 3)
 
-    @patch("summarize_fp.resolve_articles_db_path", return_value=":memory:")
-    @patch("summarize_fp.init_db")
     @patch("summarize_fp.scrape_foreignpolicy_article")
     @patch("summarize_fp.scrape_foreignpolicy_article_list")
-    def test_main_treats_all_truncated_candidates_as_noop(
+    def test_collection_treats_all_truncated_candidates_as_noop(
         self,
         mock_scrape_article_list,
         mock_scrape_article,
-        mock_init_db,
-        _mock_resolve_path,
     ):
         mock_scrape_article_list.return_value = [f"url-{index}" for index in range(10)]
         mock_scrape_article.side_effect = [
@@ -225,21 +220,20 @@ class TestSummarizeFP(unittest.TestCase):
         ]
 
         mock_repo = MagicMock()
-        mock_init_db.return_value = mock_repo
+        mock_repo.get_article_by_url.return_value = None
 
-        with patch.object(sys, "argv", ["summarize_fp.py", "2"]):
-            with patch("builtins.print") as mock_print:
-                summarize_fp.main()
+        with patch("builtins.print") as mock_print:
+            articles = summarize_fp.collect_new_articles(mock_repo, 2)
 
         mock_scrape_article_list.assert_called_once_with(10)
-        mock_repo.close.assert_called_once()
+        self.assertEqual(articles, [])
         printed_lines = [
             call.args[0]
             for call in mock_print.call_args_list
             if call.args and isinstance(call.args[0], str)
         ]
         self.assertTrue(
-            any("Treating this run as a no-op." in line for line in printed_lines),
+            any("Treating this source as a no-op." in line for line in printed_lines),
             printed_lines,
         )
 

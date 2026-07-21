@@ -1,6 +1,6 @@
 # Deployment And Operations
 
-Verified against the checked-in repository on March 24, 2026.
+Verified against the checked-in repository on July 22, 2026.
 
 ## Deployment Matrix
 
@@ -9,13 +9,14 @@ Verified against the checked-in repository on March 24, 2026.
 - Workflow: `.github/workflows/update_articles.yml`
 - Trigger: every 4 hours plus manual dispatch
 - Runtime: GitHub Actions `ubuntu-latest`
-- Purpose: scrape Foreign Affairs and Foreign Policy, summarize, write into Firestore
+- Purpose: reconcile completed Gemini batches, scrape both publications, then submit one new batch
 - Required secrets:
-  - `GEMINI_API_KEY`
-  - `FIREBASE_SERVICE_ACCOUNT_KEY`
+  - `GEMINI_API_KEY` (the FPFA project key; exposed to the process as `FPFA_GEMINI_API_KEY`)
 - Required vars:
-  - `GCP_PROJECT_ID` (default: `pressreview-458312`)
+  - `GCP_PROJECT_ID` (default: `ppf-fpfa-summary-prod`)
   - `ARTICLES_COLLECTION` (default: `articles`)
+  - `GCP_WORKLOAD_IDENTITY_PROVIDER`
+  - `GCP_INGEST_SERVICE_ACCOUNT`
 
 This job no longer depends on Azure SQL.
 
@@ -92,7 +93,6 @@ Check in this order:
 1. GitHub Actions step logs for the failing run
 2. GitHub secrets:
    - `GEMINI_API_KEY`
-   - `FIREBASE_SERVICE_ACCOUNT_KEY`
 3. Firestore access:
    - service account permissions
    - target project ID / collection name
@@ -175,9 +175,8 @@ curl http://localhost:8000/api/articles
 ```bash
 export FPFA_GEMINI_API_KEY=...
 export ARTICLE_STORE=firestore
-export FIRESTORE_PROJECT_ID=pressreview-458312
-python summarize_fa_hardened.py 1
-python summarize_fp.py 1
+export FIRESTORE_PROJECT_ID=ppf-fpfa-summary-prod
+python update_articles.py 1
 ```
 
 ### Validate deployed API

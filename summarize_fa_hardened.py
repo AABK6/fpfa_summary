@@ -22,12 +22,10 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import List, Dict
+from typing import Dict, List
 
 from bs4 import BeautifulSoup
 import requests
-from google import genai  #  → works exactly as in the original script
-
 from models.sources import ArticleSource
 from services.article_repository import ArticleRepository, resolve_articles_db_path
 from services.publication_dates import extract_publication_date_from_soup
@@ -234,96 +232,59 @@ def extract_foreign_affairs_article(url: str) -> Dict[str, str] | None:
 
 
 # --------------------------------------------------------------------------------------
-# Gemini helpers (unchanged) –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––-
+# Collection helper –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 # --------------------------------------------------------------------------------------
 
-def create_client(api_key: str) -> genai.Client:  # type: ignore
-    return genai.Client(api_key=api_key)
+def collect_new_articles(
+    repo,
+    desired_count: int,
+    *,
+    excluded_urls: set[str] | None = None,
+) -> List[Dict[str, str]]:
+    """Scrape eligible, not-yet-stored Foreign Affairs articles."""
+    excluded = excluded_urls or set()
+    candidate_count = max(desired_count * 3, 10)
+    urls = extract_latest_article_urls(candidate_count)
+    if not urls:
+        print("[ERROR] No Foreign Affairs URLs found; parser or access may have changed.")
+        return []
 
-
-def generate_core_thesis(client, article):
-    prompt = f"""
-Task: Write 1‑2 dense sentences capturing the main conclusion or central argument.
-Title: {article['title']}
-Author: {article['author']}
-Text: {article['text']}
-"""
-    return client.models.generate_content(model="gemini-flash-latest", contents=prompt).text.strip()
-
-
-def generate_detailed_abstract(client, article):
-    prompt = f"""
-Task: Provide two dense paragraphs summarising the article.
-Title: {article['title']}
-Author: {article['author']}
-Text: {article['text']}
-"""
-    return client.models.generate_content(model="gemini-flash-latest", contents=prompt).text.strip()
-
-
-def generate_supporting_data_quotes(client, article):
-    prompt = f"""
-Task: List key data points and 2‑3 direct quotes.
-Title: {article['title']}
-Author: {article['author']}
-Text: {article['text']}
-"""
-    return client.models.generate_content(model="gemini-flash-latest", contents=prompt).text.strip()
+    articles: List[Dict[str, str]] = []
+    for url in urls:
+        if url in excluded:
+            print(f"[PENDING] Foreign Affairs article already queued: {url}")
+            continue
+        cached = get_article_by_url(repo, url)
+        if cached:
+            title, author, *_ = cached
+            print(f"[CACHE] {title} by {author}")
+            continue
+        article = extract_foreign_affairs_article(url)
+        if not article:
+            print(f"[WARN] Failed to fetch article at {url}")
+            continue
+        articles.append(article)
+        if len(articles) >= desired_count:
+            break
+    return articles
 
 
 # --------------------------------------------------------------------------------------
 # Main entry point –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––-
 # --------------------------------------------------------------------------------------
 
-def main():
+def main() -> int:
     num_to_fetch = int(sys.argv[1]) if len(sys.argv) > 1 else 3
-    conn = init_db()
+    if num_to_fetch <= 0:
+        print("Please provide a positive number of articles to collect.")
+        return 1
+    from update_articles import run_batch_ingestion
 
-    # 1. Collect URLs
-    urls = extract_latest_article_urls(num_to_fetch)
-    if not urls:
-        print("[ERROR] No article URLs found – Cloudflare or layout change? Aborting.")
-        sys.exit(1)
-
-    # 2. Summarise
-    api_key = os.environ.get("FPFA_GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("[ERROR] FPFA_GEMINI_API_KEY env var not set.")
-        sys.exit(1)
-    client = create_client(api_key)
-
-    for url in urls:
-        cached = get_article_by_url(conn, url)
-        if cached:
-            title, author, *_ = cached
-            print(f"[CACHE] {title} by {author}")
-            continue  # Already summarised – skip heavy browser work
-
-        article = extract_foreign_affairs_article(url)
-        if not article:
-            print(f"[WARN] Failed to fetch article at {url}")
-            continue
-
-        core = generate_core_thesis(client, article)
-        abstract = generate_detailed_abstract(client, article)
-        quotes = generate_supporting_data_quotes(client, article)
-
-        insert_article(
-            conn,
-            source=ArticleSource.FOREIGN_AFFAIRS.value,
-            url=article["url"],
-            title=article["title"],
-            author=article["author"],
-            article_text=article["text"],
-            core_thesis=core,
-            detailed_abstract=abstract,
-            supporting_data_quotes=quotes,
-            publication_date=article.get("publication_date"),
-        )
-        print(f"[OK] Stored summary for {article['title']}")
-
-    conn.close()
+    return run_batch_ingestion(
+        limit=num_to_fetch,
+        sources=(ArticleSource.FOREIGN_AFFAIRS,),
+    )
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
