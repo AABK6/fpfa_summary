@@ -113,7 +113,7 @@ When a source layout changes, run `python scripts/live_parser_canary.py`. A heal
 `firebase.legacy.json` contains a permanent redirect from the retired project. Deploy it only after both production smoke tests pass:
 
 ```powershell
-firebase deploy --project pressreview-458312 --config firebase.legacy.json --only hosting --non-interactive
+firebase deploy --project pressreview-458312 --config firebase.legacy.json --only hosting:pressreview-458312 --non-interactive
 ```
 
 Then verify both `/` and an arbitrary deep path redirect permanently to `https://ppf-fpfa-summary-prod.web.app`. This production-changing command is intentionally absent from automation.

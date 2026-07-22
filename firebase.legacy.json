@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "pressreview-458312",
     "public": "legacy_redirect",
     "ignore": [
       "firebase.legacy.json",

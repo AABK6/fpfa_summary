@@ -12,7 +12,7 @@ FPFA collects articles from *Foreign Policy* and *Foreign Affairs*, produces str
 | Scheduled ingestion | GitHub Actions, every four hours |
 | Android distribution | Firebase App Distribution |
 
-The old `pressreview-458312.web.app` host is a legacy endpoint. A permanent redirect is prepared in `firebase.legacy.json`, but it must be deployed separately after approval.
+The old `pressreview-458312.web.app` host permanently redirects to the production reader. Its separately scoped configuration lives in `firebase.legacy.json`.
 
 ## Repository map
 
