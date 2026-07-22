@@ -63,7 +63,7 @@ python scripts/smoke_test_api.py --base-url https://fpfa-summary-api-10762049995
 
 ## Web gate
 
-The workflow pins Flutter `3.44.6` and Firebase CLI `15.24.0`. It enforces formatting, analysis, tests, and a release build, then uploads that exact tested bundle. The deployment job downloads the artifact instead of rebuilding after authentication. After deployment, Playwright checks 320, 390, 768, and 1440 pixel viewports and preserves screenshots for 14 days.
+The workflow pins Flutter `3.44.6` and Firebase CLI `15.24.0`. It enforces formatting, analysis, tests, and a release build, then uploads that exact tested bundle. The deployment job downloads the artifact instead of rebuilding after authentication and waits for the bounded, body-free production API contract before publishing. After deployment, Playwright checks 320, 390, 768, and 1440 pixel viewports and preserves screenshots for 14 days.
 
 ```powershell
 Set-Location fpfa_app
@@ -81,7 +81,7 @@ A successful upload is not publication proof. The browser smoke result is.
 
 ## Android gate
 
-The Android workflow applies the same format, analysis, and test gates. It fails closed unless all four production-signing secrets exist, builds with the production API define, scans all compiled `libapp.so` files for the production endpoint and forbidden loopback URLs, verifies the APK signature is not the Android debug certificate, archives that APK, then distributes the same file.
+The Android workflow applies the same format, analysis, and test gates. It fails closed unless all four production-signing secrets exist, builds with the production API define, scans all compiled `libapp.so` files for the production endpoint and forbidden loopback URLs, verifies the APK signature is not the Android debug certificate, archives that APK, waits for the bounded, body-free production API contract, then distributes the same file.
 
 The release manifest disables cleartext traffic. The debug manifest permits it for local Flask development.
 

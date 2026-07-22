@@ -85,6 +85,21 @@ jobs:
           name: fpfa-web-${{ github.sha }}
           path: fpfa_app/build/web
 
+      - name: Wait for the production API release contract
+        shell: bash
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error "${API_BASE_URL_PROD}/api/articles?limit=1" \
+              | jq -e 'type == "array" and length <= 1 and all(.[]; has("article_text") | not)' \
+              >/dev/null; then
+              exit 0
+            fi
+            echo "Production API contract is not ready (attempt ${attempt}/60)."
+            sleep 10
+          done
+          echo "Production API contract did not become ready within ten minutes." >&2
+          exit 1
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
