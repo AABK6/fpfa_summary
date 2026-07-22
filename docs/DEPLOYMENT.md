@@ -1,186 +1,129 @@
-# Deployment And Operations
+# Deployment and operations
 
-Verified against the checked-in repository on July 22, 2026.
+Runbook updated on July 22, 2026. It describes the checked-in target; it does not claim that unmerged changes are live.
 
-## Deployment Matrix
+## Production targets
 
-### 1. Scheduled ingestion
+| Component | Target |
+| --- | --- |
+| Web reader | `https://ppf-fpfa-summary-prod.web.app` |
+| Public API | `https://fpfa-summary-api-1076204999548.europe-west1.run.app` |
+| Article store | `firestore://ppf-fpfa-summary-prod/articles` |
+| Ingestion | GitHub Actions every four hours |
+| Android | Firebase App Distribution |
 
-- Workflow: `.github/workflows/update_articles.yml`
-- Trigger: every 4 hours plus manual dispatch
-- Runtime: GitHub Actions `ubuntu-latest`
-- Purpose: reconcile completed Gemini batches, scrape both publications, then submit one new batch
-- Required secrets:
-  - `GEMINI_API_KEY` (the FPFA project key; exposed to the process as `FPFA_GEMINI_API_KEY`)
-- Required vars:
-  - `GCP_PROJECT_ID` (default: `ppf-fpfa-summary-prod`)
-  - `ARTICLES_COLLECTION` (default: `articles`)
-  - `GCP_WORKLOAD_IDENTITY_PROVIDER`
-  - `GCP_INGEST_SERVICE_ACCOUNT`
+## Deployment order
 
-This job no longer depends on Azure SQL.
+1. Backend: `.github/workflows/master_ppfflaskapp.yml`
+2. Web reader: `.github/workflows/deploy_flutter_static_web_apps.yml`
+3. Android: `.github/workflows/deploy_android.yml`
+4. Scheduled ingestion: `.github/workflows/update_articles.yml`
+5. Legacy redirect: manual, after production verification
 
-### 2. Backend CI and deployment
+The backend goes first because the public contract removes `article_text`, enforces `limit`, deduplicates summaries, and narrows CORS. The Flutter client accepts the old payload during the transition.
 
-- Workflow: `.github/workflows/master_ppfflaskapp.yml`
-- Runtime for CI steps: GitHub Actions `ubuntu-latest`
-- Deployment target: Cloud Run
-- Default service name: `fpfa-summary-api`
-- Default region: `europe-west1`
-- Required secret:
-  - `FIREBASE_SERVICE_ACCOUNT_KEY`
-- Optional vars:
-  - `GCP_PROJECT_ID`
-  - `GCP_REGION`
-  - `GCP_BACKEND_SERVICE`
-  - `GCP_ARTIFACT_REPOSITORY`
-  - `ARTICLES_COLLECTION`
+## Required GitHub configuration
 
-Runtime env pushed into Cloud Run:
+Repository variables:
 
-- `ARTICLE_STORE=firestore`
-- `FIRESTORE_PROJECT_ID=<project>`
-- `ARTICLES_COLLECTION=<collection>`
+- `GCP_PROJECT_ID` — defaults to `ppf-fpfa-summary-prod`
+- `GCP_REGION` — defaults to `europe-west1`
+- `GCP_BACKEND_SERVICE` — defaults to `fpfa-summary-api`
+- `GCP_ARTIFACT_REPOSITORY` — defaults to `fpfa`
+- `ARTICLES_COLLECTION` — defaults to `articles`
+- `API_BASE_URL_PROD` — production Cloud Run URL
+- `WEB_BASE_URL_PROD` — production Firebase Hosting URL
+- `FIREBASE_ANDROID_APP_ID` — production Android app
+- `GCP_WORKLOAD_IDENTITY_PROVIDER`
+- `GCP_DEPLOYER_SERVICE_ACCOUNT`
+- `GCP_RUNTIME_SERVICE_ACCOUNT`
+- `GCP_FIREBASE_SERVICE_ACCOUNT`
+- `GCP_INGEST_SERVICE_ACCOUNT`
 
-### 3. Web frontend deployment
+Secrets:
 
-- Workflow: `.github/workflows/deploy_flutter_static_web_apps.yml`
-- Runtime for build: GitHub Actions `ubuntu-latest`
-- Deployment target: Firebase Hosting
-- Build-time variable:
-  - `API_BASE_URL_PROD` or fallback `https://fpfa-summary-api-1028212947283.europe-west1.run.app`
-- Required secret:
-  - `FIREBASE_SERVICE_ACCOUNT_KEY`
-- Config files:
-  - `.firebaserc`
-  - `firebase.json`
+- `GEMINI_API_KEY` — exposed to ingestion as `FPFA_GEMINI_API_KEY`
+- `ANDROID_KEYSTORE_BASE64` — base64-encoded production keystore
+- `ANDROID_KEYSTORE_PASSWORD` — keystore password
+- `ANDROID_KEY_ALIAS` — production signing alias
+- `ANDROID_KEY_PASSWORD` — signing-key password
 
-### 4. Android distribution
+Deployments use Workload Identity Federation. Long-lived service-account JSON is not part of the active workflows.
+Keep an encrypted, off-repository backup of the Android keystore and its password. Losing either prevents future updates signed as the same application.
 
-- Workflow: `.github/workflows/deploy_android.yml`
-- Runtime for build: GitHub Actions `ubuntu-latest`
-- Distribution target: Firebase App Distribution
-- Required secret:
-  - `FIREBASE_SERVICE_ACCOUNT_KEY`
+## Backend gate
 
-## Lowest-Cost Rationale
+The workflow installs the pinned dependencies, runs every Python test, compiles the sources, runs the live parser canary, and builds one uniquely tagged image. It deploys that image as a tagged revision with no traffic, smokes the candidate URL, promotes it to 100%, and smokes the canonical production URL. A failed post-promotion smoke routes traffic back to the prior revision.
 
-This repo is intentionally avoiding the expensive defaults:
+The smoke test checks health, CORS, limits, ordering, deduplication, required fields, payload size, and exclusion of `article_text`.
 
-- No Cloud SQL: Firestore is the default production store to avoid a constant database bill.
-- No always-on VM: Cloud Run scales to zero for the API.
-- No dedicated frontend server: Flutter web is served from Firebase Hosting.
-- No extra scheduler service yet: ingestion stays on GitHub Actions, which is cheaper than standing up more GCP runtime just to run scraping every 4 hours.
-
-## Required GCP Services
-
-The project should have these enabled:
-
-- Cloud Run API
-- Cloud Build API
-- Artifact Registry API
-- Firestore API
-- Firebase Hosting
-
-The Firestore database already needs to exist in Native mode.
-
-## Where To Look When Something Fails
-
-### If `Update articles / run-scripts` fails
-
-Check in this order:
-
-1. GitHub Actions step logs for the failing run
-2. GitHub secrets:
-   - `GEMINI_API_KEY`
-3. Firestore access:
-   - service account permissions
-   - target project ID / collection name
-4. Source-site drift:
-   - run `python scripts/live_parser_canary.py`
-
-### If backend deploy fails
-
-Check:
-
-1. GitHub Actions logs in `master_ppfflaskapp.yml`
-2. GCP auth using `FIREBASE_SERVICE_ACCOUNT_KEY`
-3. Artifact Registry repository existence / permissions
-4. Cloud Run deploy output
-5. Post-deploy smoke test output from `scripts/smoke_test_api.py`
-
-### If Flutter web deploy fails
-
-Check:
-
-1. GitHub Actions logs in `deploy_flutter_static_web_apps.yml`
-2. `API_BASE_URL_PROD`
-3. Firebase Hosting deploy output
-4. `firebase.json` rewrite config
-
-### If Android distribution fails
-
-Check:
-
-1. GitHub Actions logs in `deploy_android.yml`
-2. Firebase service account secret
-3. Firebase App Distribution project/app ID alignment
-
-## Runtime Storage Modes
-
-### Production
-
-Set:
-
-```bash
-export ARTICLE_STORE=firestore
-export FIRESTORE_PROJECT_ID=pressreview-458312
-export ARTICLES_COLLECTION=articles
+```powershell
+python scripts/smoke_test_api.py --base-url https://fpfa-summary-api-1076204999548.europe-west1.run.app
 ```
 
-### Local SQLite
+## Web gate
 
-Unset Firestore env and run locally:
+The workflow pins Flutter `3.44.6` and Firebase CLI `15.24.0`. It enforces formatting, analysis, tests, and a release build, then uploads that exact tested bundle. The deployment job downloads the artifact instead of rebuilding after authentication. After deployment, Playwright checks 320, 390, 768, and 1440 pixel viewports and preserves screenshots for 14 days.
 
-```bash
-unset ARTICLE_STORE
-unset FIRESTORE_PROJECT_ID
-python app.py
+```powershell
+Set-Location fpfa_app
+flutter pub get
+dart format --output=none --set-exit-if-changed lib test integration_test
+flutter analyze
+flutter test
+flutter build web --release --dart-define=API_BASE_URL=https://fpfa-summary-api-1076204999548.europe-west1.run.app
+Set-Location ..
+firebase deploy --project ppf-fpfa-summary-prod --only hosting --non-interactive
+python scripts/smoke_test_web.py --base-url https://ppf-fpfa-summary-prod.web.app --api-base-url https://fpfa-summary-api-1076204999548.europe-west1.run.app
 ```
 
-### Legacy SQL mode
+A successful upload is not publication proof. The browser smoke result is.
 
-The storage layer still understands `DATABASE_URL` for SQLite / SQLAlchemy URLs, but GCP production is no longer expected to use Azure SQL.
+## Android gate
 
-## Practical Checks
+The Android workflow applies the same format, analysis, and test gates. It fails closed unless all four production-signing secrets exist, builds with the production API define, scans all compiled `libapp.so` files for the production endpoint and forbidden loopback URLs, verifies the APK signature is not the Android debug certificate, archives that APK, then distributes the same file.
 
-### Validate backend locally with Flask
+The release manifest disables cleartext traffic. The debug manifest permits it for local Flask development.
 
-```bash
-python app.py
-curl http://localhost:5000/health
-curl http://localhost:5000/api/articles
-```
+## Ingestion gate
 
-### Validate backend locally with FastAPI
+The scheduled workflow uses a dedicated ingestion identity and prevents overlapping runs. Each run:
 
-```bash
-python main.py
-curl http://localhost:8000/health
-curl http://localhost:8000/api/articles
-```
+1. reconciles prepared or running Gemini batches;
+2. writes completed results to the article store;
+3. scrapes eligible articles from both sources;
+4. persists stable request hashes before networking;
+5. submits one structured Gemini Batch.
 
-### Validate ingestion against Firestore
+The default model is `gemini-3.6-flash`. A prepared ledger entry is not a completed summary, and a scheduled workflow marked successful may still leave a provider batch pending for the next run.
 
-```bash
-export FPFA_GEMINI_API_KEY=...
-export ARTICLE_STORE=firestore
-export FIRESTORE_PROJECT_ID=ppf-fpfa-summary-prod
+```powershell
+$env:FPFA_GEMINI_API_KEY = '...'
+$env:FPFA_GEMINI_MODEL = 'gemini-3.6-flash'
+$env:ARTICLE_STORE = 'firestore'
+$env:FIRESTORE_PROJECT_ID = 'ppf-fpfa-summary-prod'
+$env:ARTICLES_COLLECTION = 'articles'
 python update_articles.py 1
 ```
 
-### Validate deployed API
+When a source layout changes, run `python scripts/live_parser_canary.py`. A healthy metadata path does not prove full-text extraction; inspect each source result.
 
-```bash
-python scripts/smoke_test_api.py --base-url https://fpfa-summary-api-1028212947283.europe-west1.run.app
+## Legacy host retirement
+
+`firebase.legacy.json` contains a permanent redirect from the retired project. Deploy it only after both production smoke tests pass:
+
+```powershell
+firebase deploy --project pressreview-458312 --config firebase.legacy.json --only hosting --non-interactive
 ```
+
+Then verify both `/` and an arbitrary deep path redirect permanently to `https://ppf-fpfa-summary-prod.web.app`. This production-changing command is intentionally absent from automation.
+
+## Failure and rollback
+
+- Backend failure before deployment: production is unchanged.
+- Backend smoke failure after deployment: route Cloud Run traffic to the last known-good revision.
+- Web smoke failure: restore the last known-good Firebase Hosting release and retain the screenshots.
+- Android verification failure: do not distribute the APK.
+- Ingestion failure: inspect the stored batch ledger before rerunning; blind retries can duplicate provider cost.
+
+Record the workflow run, deployed revision or Hosting release, smoke result, public URL, and rollback point. A green build alone proves very little.

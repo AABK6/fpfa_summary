@@ -1,4 +1,4 @@
-import '../entities/article.dart';
+import '../entities/article_feed.dart';
 import '../repositories/article_repository.dart';
 
 class GetArticles {
@@ -6,7 +6,7 @@ class GetArticles {
 
   GetArticles(this.repository);
 
-  Future<List<Article>> execute({int limit = 20}) async {
-    return await repository.getLatestArticles(limit: limit);
+  Future<ArticleFeed> execute({int limit = 20}) {
+    return repository.getLatestArticles(limit: limit);
   }
 }

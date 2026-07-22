@@ -1,12 +1,11 @@
 {
-    "name": "fpfa_app",
-    "short_name": "fpfa_app",
+    "name": "FPFA Brief",
+    "short_name": "FPFA",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#F4F1EA",
+    "theme_color": "#174A6E",
+    "description": "Concise, sourced summaries of Foreign Policy and Foreign Affairs analysis.",
     "prefer_related_applications": false,
     "icons": [
         {

@@ -8,11 +8,12 @@ import 'package:flutter/material.dart';
 
 import '../../domain/entities/article.dart';
 
-enum CardState { stacked, front, back, quotes }
+enum ArticleSection { thesis, summary, evidence }
 
 class Deck extends StatefulWidget {
-  final List<Article> articles;
   const Deck({super.key, required this.articles});
+
+  final List<Article> articles;
 
   @override
   State<Deck> createState() => DeckState();
@@ -24,564 +25,631 @@ class DeckState extends State<Deck> {
 
   late final String _viewType;
   late final html.DivElement _host;
-  late final html.DivElement _scene;
-  late List<CardState> _states;
-  final List<_DeckDomCard> _cards = [];
-
-  StreamSubscription<html.Event>? _resizeSub;
+  final List<StreamSubscription<html.Event>> _subscriptions = [];
 
   int _activeIndex = 0;
-  num? _dragStartY;
+  ArticleSection _section = ArticleSection.thesis;
 
   @override
   void initState() {
     super.initState();
-    _activeIndex = widget.articles.isEmpty ? 0 : widget.articles.length - 1;
-    _states = _buildStates(activeIndex: _activeIndex);
     _injectStyles();
+    _viewType = 'fpfa-reader-${_nextViewId++}';
+    _host = html.DivElement()
+      ..className = 'fpfa-reader-host'
+      ..tabIndex = 0
+      ..setAttribute('role', 'region')
+      ..setAttribute(
+        'aria-label',
+        'Article reader. Newest article first. Use left and right arrows to navigate.',
+      )
+      ..setAttribute('data-testid', 'article-reader');
+    _host.style
+      ..width = '100%'
+      ..height = '100%';
 
-    _viewType = 'fpfa-rolodex-web-${_nextViewId++}';
-    _host = html.DivElement()..className = 'fpfa-rolodex-host';
-    _scene = html.DivElement()..className = 'fpfa-rolodex-scene';
-    _host.append(_scene);
-
-    ui_web.platformViewRegistry.registerViewFactory(_viewType, (viewId) {
-      return _host;
-    });
-
-    _buildCards();
-    _resizeSub = html.window.onResize.listen((_) => _applyLayout());
+    ui_web.platformViewRegistry.registerViewFactory(_viewType, (_) => _host);
+    _render();
   }
 
   @override
   void didUpdateWidget(covariant Deck oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.articles != widget.articles) {
-      _activeIndex = widget.articles.isEmpty ? 0 : widget.articles.length - 1;
-      _states = _buildStates(activeIndex: _activeIndex);
-      _buildCards();
+      _activeIndex = 0;
+      _section = ArticleSection.thesis;
+      _render();
     }
   }
 
   @override
   void dispose() {
-    _resizeSub?.cancel();
+    _cancelSubscriptions();
+    _host.remove();
     super.dispose();
   }
 
-  List<CardState> _buildStates({
-    required int activeIndex,
-    CardState activeState = CardState.front,
-  }) {
-    return List.generate(
-      widget.articles.length,
-      (i) => i == activeIndex ? activeState : CardState.stacked,
+  void reset() {
+    _activeIndex = 0;
+    _section = ArticleSection.thesis;
+    _render();
+  }
+
+  void _cancelSubscriptions() {
+    for (final subscription in _subscriptions) {
+      subscription.cancel();
+    }
+    _subscriptions.clear();
+  }
+
+  void _listen(html.Element element, void Function() callback) {
+    _subscriptions.add(
+      element.onClick.listen((event) {
+        event.stopPropagation();
+        callback();
+      }),
     );
   }
 
-  void reset() {
-    if (widget.articles.isEmpty) {
-      return;
-    }
-    _activeIndex = widget.articles.length - 1;
-    _states = _buildStates(activeIndex: _activeIndex);
-    _applyLayout();
+  void _selectArticle(int index, {String? focusTestId}) {
+    if (index < 0 || index >= widget.articles.length) return;
+    _activeIndex = index;
+    _section = ArticleSection.thesis;
+    _render();
+    _focusTestId(focusTestId);
   }
 
-  void _shiftActiveIndex(int delta) {
-    if (widget.articles.isEmpty) {
-      return;
-    }
-    final nextIndex =
-        (_activeIndex + delta).clamp(0, widget.articles.length - 1);
-    if (nextIndex == _activeIndex) {
-      return;
-    }
-
-    _activeIndex = nextIndex;
-    _states = _buildStates(activeIndex: _activeIndex);
-    _applyLayout();
+  void _selectSection(ArticleSection section) {
+    _section = section;
+    _render();
+    _focusTestId('section-${section.name}');
   }
 
-  void _onCardTap(int index) {
-    if (widget.articles.isEmpty) {
-      return;
-    }
-
-    final current = _states[index];
-    if (current == CardState.stacked) {
-      _activeIndex = index;
-      _states = _buildStates(activeIndex: index);
-    } else if (current == CardState.front) {
-      _states[index] = CardState.back;
-    } else if (current == CardState.back) {
-      _states[index] = CardState.quotes;
-    } else {
-      _states[index] = CardState.front;
-    }
-
-    _applyLayout();
+  void _focusTestId(String? testId) {
+    if (testId == null) return;
+    final target = _host.querySelector('[data-testid="$testId"]');
+    if (target is html.HtmlElement) target.focus();
   }
 
-  List<int> _buildBehindIndices(int limit) {
-    final behind = <int>[];
-    for (int offset = 1; offset < widget.articles.length; offset += 1) {
-      behind.add((_activeIndex + offset) % widget.articles.length);
-    }
-    if (behind.length <= limit) {
-      return behind;
-    }
-    return behind.sublist(0, limit);
+  void _render() {
+    _cancelSubscriptions();
+    _host.children.clear();
+    if (widget.articles.isEmpty) return;
+
+    final active = widget.articles[_activeIndex];
+    final shell = html.DivElement()..className = 'fpfa-reader-shell';
+    shell
+      ..append(_buildRail())
+      ..append(_buildArticle(active));
+    _host.append(shell);
+
+    final liveStatus = html.DivElement()
+      ..className = 'fpfa-sr-only'
+      ..setAttribute('aria-live', 'polite')
+      ..text =
+          'Article ${_activeIndex + 1} of ${widget.articles.length}: ${active.title}';
+    _host.append(liveStatus);
+
+    _subscriptions.add(
+      _host.onKeyDown.listen((event) {
+        final target = event.target;
+        if (target is html.Element && target.getAttribute('role') == 'tab') {
+          return;
+        }
+        if (event.key == 'ArrowLeft' && _activeIndex > 0) {
+          event.preventDefault();
+          _selectArticle(_activeIndex - 1);
+        } else if (event.key == 'ArrowRight' &&
+            _activeIndex < widget.articles.length - 1) {
+          event.preventDefault();
+          _selectArticle(_activeIndex + 1);
+        }
+      }),
+    );
   }
 
-  void _buildCards() {
-    _cards.clear();
-    _scene.children.clear();
-    _scene.onWheel.listen((event) {
-      event.preventDefault();
-      if (event.deltaY > 8) {
-        _shiftActiveIndex(1);
-      } else if (event.deltaY < -8) {
-        _shiftActiveIndex(-1);
-      }
-    });
-    _scene.onMouseDown.listen((event) {
-      _dragStartY = event.client.y;
-    });
-    _scene.onMouseUp.listen((event) {
-      if (_dragStartY == null) {
+  html.Element _buildRail() {
+    final rail = html.Element.tag('nav')
+      ..className = 'fpfa-article-rail'
+      ..setAttribute('aria-label', 'Article chronology');
+    final heading = html.HeadingElement.h2()
+      ..className = 'fpfa-rail-heading'
+      ..text = 'Newest first';
+    final list = html.DivElement()..className = 'fpfa-rail-list';
+
+    for (int index = 0; index < widget.articles.length; index += 1) {
+      final article = widget.articles[index];
+      final selected = index == _activeIndex;
+      final button = html.ButtonElement()
+        ..type = 'button'
+        ..className = 'fpfa-preview ${selected ? 'is-active' : ''}'
+        ..setAttribute('aria-current', selected ? 'true' : 'false')
+        ..setAttribute(
+          'aria-label',
+          '${index == 0 ? 'Latest article' : 'Article ${index + 1}'}. ${article.title}',
+        )
+        ..setAttribute('data-testid', 'article-preview-$index');
+      button.style.setProperty('--stack-offset', '${(index % 4) * 3}px');
+
+      final mark = html.SpanElement()
+        ..className = 'fpfa-source-mark ${_sourceClass(article.source)}'
+        ..setAttribute('aria-hidden', 'true')
+        ..text = article.source == 'Foreign Policy' ? 'FP' : 'FA';
+      final copy = html.SpanElement()..className = 'fpfa-preview-copy';
+      copy
+        ..append(
+          html.SpanElement()
+            ..className = 'fpfa-preview-order'
+            ..text = index == 0
+                ? 'LATEST'
+                : '${index + 1} OF ${widget.articles.length}',
+        )
+        ..append(
+          html.SpanElement()
+            ..className = 'fpfa-preview-title'
+            ..text = article.title,
+        );
+      button
+        ..append(mark)
+        ..append(copy);
+      _listen(
+        button,
+        () => _selectArticle(index, focusTestId: 'article-preview-$index'),
+      );
+      list.append(button);
+    }
+
+    rail
+      ..append(heading)
+      ..append(list);
+    return rail;
+  }
+
+  html.Element _buildArticle(Article article) {
+    final card = html.Element.tag('article')
+      ..className = 'fpfa-active-card'
+      ..setAttribute('aria-labelledby', '$_viewType-title');
+
+    final header = html.Element.tag('header')
+      ..className = 'fpfa-card-header ${_sourceClass(article.source)}';
+    final eyebrow = html.DivElement()..className = 'fpfa-eyebrow';
+    final source = html.SpanElement()
+      ..className = 'fpfa-source-name'
+      ..text = article.source;
+    final date = html.Element.tag('time')
+      ..className = 'fpfa-date'
+      ..text = article.shortDate;
+    eyebrow
+      ..append(source)
+      ..append(date);
+
+    final title = html.HeadingElement.h1()
+      ..id = '$_viewType-title'
+      ..className = 'fpfa-active-title'
+      ..setAttribute('data-testid', 'active-title')
+      ..text = article.title;
+    final author = html.ParagraphElement()
+      ..className = 'fpfa-author'
+      ..text = article.author;
+    header
+      ..append(eyebrow)
+      ..append(title)
+      ..append(author);
+
+    final tabs = html.DivElement()
+      ..className = 'fpfa-section-tabs'
+      ..setAttribute('role', 'tablist')
+      ..setAttribute('aria-label', 'Summary sections');
+    for (final section in ArticleSection.values) {
+      final selected = section == _section;
+      final tab = html.ButtonElement()
+        ..id = '$_viewType-tab-${section.name}'
+        ..type = 'button'
+        ..className = 'fpfa-section-tab ${selected ? 'is-active' : ''}'
+        ..setAttribute('role', 'tab')
+        ..setAttribute('aria-selected', '$selected')
+        ..setAttribute('aria-controls', '$_viewType-panel')
+        ..setAttribute('tabindex', selected ? '0' : '-1')
+        ..setAttribute('data-testid', 'section-${section.name}')
+        ..text = _sectionLabel(section);
+      _listen(tab, () => _selectSection(section));
+      _subscriptions.add(
+        tab.onKeyDown.listen((event) {
+          const sections = ArticleSection.values;
+          final current = sections.indexOf(section);
+          final next = switch (event.key) {
+            'ArrowLeft' => (current - 1 + sections.length) % sections.length,
+            'ArrowRight' => (current + 1) % sections.length,
+            'Home' => 0,
+            'End' => sections.length - 1,
+            _ => null,
+          };
+          if (next == null) return;
+          event
+            ..preventDefault()
+            ..stopPropagation();
+          _selectSection(sections[next]);
+        }),
+      );
+      tabs.append(tab);
+    }
+
+    final scroll = html.DivElement()..className = 'fpfa-card-scroll';
+    final panel = html.Element.tag('section')
+      ..id = '$_viewType-panel'
+      ..className = 'fpfa-section-panel'
+      ..setAttribute('role', 'tabpanel')
+      ..setAttribute('tabindex', '0')
+      ..setAttribute('aria-labelledby', '$_viewType-tab-${_section.name}')
+      ..setAttribute('data-testid', 'section-content');
+    _appendSectionContent(panel, article);
+    scroll.append(panel);
+
+    final footer = html.Element.tag('footer')..className = 'fpfa-card-footer';
+    final navigation = html.DivElement()
+      ..className = 'fpfa-article-navigation'
+      ..setAttribute('aria-label', 'Article navigation');
+    final newer = html.ButtonElement()
+      ..type = 'button'
+      ..className = 'fpfa-nav-button'
+      ..disabled = _activeIndex == 0
+      ..setAttribute('data-testid', 'newer-button')
+      ..text = '← Newer';
+    final counter = html.SpanElement()
+      ..className = 'fpfa-counter'
+      ..setAttribute('data-testid', 'article-counter')
+      ..text =
+          '${_activeIndex + 1} of ${widget.articles.length} · newest first';
+    final older = html.ButtonElement()
+      ..type = 'button'
+      ..className = 'fpfa-nav-button'
+      ..disabled = _activeIndex == widget.articles.length - 1
+      ..setAttribute('data-testid', 'older-button')
+      ..text = 'Older →';
+    _listen(
+      newer,
+      () => _selectArticle(_activeIndex - 1, focusTestId: 'newer-button'),
+    );
+    _listen(
+      older,
+      () => _selectArticle(_activeIndex + 1, focusTestId: 'older-button'),
+    );
+    navigation
+      ..append(newer)
+      ..append(counter)
+      ..append(older);
+
+    final sourceLink = html.AnchorElement(href: article.url)
+      ..className = 'fpfa-source-link'
+      ..target = '_blank'
+      ..rel = 'noopener noreferrer'
+      ..setAttribute('data-testid', 'source-link')
+      ..setAttribute(
+        'aria-label',
+        'Read the original article on ${_sourceHost(article.url)}',
+      )
+      ..text = 'Read on ${_sourceHost(article.url)} ↗';
+    footer
+      ..append(navigation)
+      ..append(sourceLink);
+
+    card
+      ..append(header)
+      ..append(tabs)
+      ..append(scroll)
+      ..append(footer);
+    return card;
+  }
+
+  void _appendSectionContent(html.Element panel, Article article) {
+    if (_section == ArticleSection.evidence) {
+      if (article.quotes.isEmpty) {
+        panel.append(
+          html.ParagraphElement()
+            ..text = 'No supporting evidence was included in this summary.',
+        );
         return;
       }
-      final endY = event.client.y;
-      final delta = endY - _dragStartY!;
-      _dragStartY = null;
-      if (delta > 40) {
-        _shiftActiveIndex(1);
-      } else if (delta < -40) {
-        _shiftActiveIndex(-1);
+      final list = html.DivElement()..className = 'fpfa-evidence-list';
+      for (final quote in article.quotes.take(8)) {
+        list.append(
+          html.Element.tag('blockquote')
+            ..className = 'fpfa-evidence-item'
+            ..text = quote,
+        );
       }
-    });
-
-    for (int i = 0; i < widget.articles.length; i += 1) {
-      final card = _DeckDomCard.fromArticle(
-        index: i,
-        article: widget.articles[i],
-        onTap: () => _onCardTap(i),
-      );
-      _cards.add(card);
-      _scene.append(card.root);
-    }
-
-    _applyLayout();
-  }
-
-  void _applyLayout() {
-    if (widget.articles.isEmpty) {
+      panel.append(list);
       return;
     }
 
-    final viewportWidth = html.window.innerWidth ?? 1280;
-    final isMobile = viewportWidth < 720;
-    final visibleBehind = _buildBehindIndices(isMobile ? 7 : 9);
-    final ordered = <int>[
-      ...visibleBehind.reversed,
-      _activeIndex,
-    ];
-    final positionByIndex = <int, int>{
-      for (int i = 0; i < ordered.length; i += 1) ordered[i]: i,
-    };
+    panel.append(
+      html.ParagraphElement()
+        ..className = 'fpfa-summary-copy'
+        ..text = _section == ArticleSection.thesis
+            ? article.coreThesis
+            : article.detailedAbstract,
+    );
+  }
 
-    final activeState = _states[_activeIndex];
-    final activeHeight = activeState == CardState.back
-        ? (isMobile ? 500 : 580)
-        : activeState == CardState.quotes
-            ? (isMobile ? 430 : 500)
-            : (isMobile ? 330 : 390);
-    final activeTop = isMobile ? 230 : 280;
-    final sceneHeight = activeTop + activeHeight + (isMobile ? 90 : 120);
+  static String _sectionLabel(ArticleSection section) => switch (section) {
+    ArticleSection.thesis => 'Thesis',
+    ArticleSection.summary => 'Summary',
+    ArticleSection.evidence => 'Evidence',
+  };
 
-    _scene.style.height = '${sceneHeight}px';
-    _scene.classes.toggle('is-mobile', isMobile);
+  static String _sourceClass(String source) =>
+      source == 'Foreign Policy' ? 'is-fp' : 'is-fa';
 
-    for (final card in _cards) {
-      final position = positionByIndex[card.index];
-      if (position == null) {
-        card.root.style.opacity = '0';
-        card.root.style.pointerEvents = 'none';
-        card.root.style.transform =
-            'translate3d(0, ${sceneHeight + 120}px, -400px) scale(0.75)';
-        continue;
-      }
-
-      final isActive = card.index == _activeIndex;
-      final depth = (ordered.length - 1 - position).toDouble();
-      final inset = isActive ? 0.0 : depth * (isMobile ? 12 : 16);
-      final top = isActive
-          ? activeTop.toDouble()
-          : activeTop -
-              (depth * (isMobile ? 34 : 40)) -
-              (depth * depth * (isMobile ? 4.5 : 7.5));
-      final z = isActive ? 200.0 : -depth * (isMobile ? 60 : 88);
-      final tilt = isActive ? 0.0 : -14.0 - depth * 2.6;
-      final scale = isActive ? 1.0 : 1 - depth * (isMobile ? 0.045 : 0.04);
-      final cardHeight = isActive ? activeHeight : (isMobile ? 58 : 66);
-
-      card.root.classes
-        ..toggle('is-active', isActive)
-        ..toggle('is-stacked', !isActive)
-        ..toggle('is-expanded', isActive && activeState == CardState.back)
-        ..toggle('is-quotes', isActive && activeState == CardState.quotes);
-
-      card.abstractBlock.classes
-          .toggle('is-visible', isActive && activeState == CardState.back);
-
-      card.root.style
-        ..opacity = '1'
-        ..pointerEvents = 'auto'
-        ..zIndex = '${1000 - depth.round()}'
-        ..left = '${inset}px'
-        ..width = 'calc(100% - ${inset * 2}px)'
-        ..height = '${cardHeight}px'
-        ..transform =
-            'translate3d(0, ${top}px, ${z}px) rotateX(${tilt}deg) scale($scale)';
-    }
+  static String _sourceHost(String value) {
+    final host = Uri.tryParse(value)?.host.replaceFirst('www.', '');
+    return host == null || host.isEmpty ? 'source site' : host;
   }
 
   static void _injectStyles() {
-    if (_stylesInjected) {
-      return;
-    }
+    if (_stylesInjected) return;
     _stylesInjected = true;
-
-    final style = html.StyleElement()
-      ..text = '''
-.fpfa-rolodex-host {
-  width: 100%;
-  height: 100%;
+    html.document.head?.append(
+      html.StyleElement()
+        ..text = '''
+.fpfa-reader-host {
+  --ink: #17212b;
+  --muted: #52606d;
+  --primary: #174a6e;
+  --focus: #0b6eaa;
+  --canvas: #f4f1ea;
+  --surface: #ffffff;
+  --line: #d7dce0;
+  --fp: #ffe3de;
+  --fa: #ddeff8;
+  box-sizing: border-box;
   display: block;
+  color: var(--ink);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.5;
+  outline: none;
 }
 
-.fpfa-rolodex-scene {
-  position: relative;
-  width: min(88vw, 920px);
-  height: 860px;
-  margin: 0 auto;
-  perspective: 2200px;
-  transform-style: preserve-3d;
-  transform: rotateX(8deg);
-  user-select: none;
-  touch-action: pan-y;
+.fpfa-reader-host *, .fpfa-reader-host *::before, .fpfa-reader-host *::after {
+  box-sizing: border-box;
 }
 
-.fpfa-rolodex-card {
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform-origin: top center;
-  transform-style: preserve-3d;
-  transition:
-    transform 560ms cubic-bezier(0.22, 1, 0.36, 1),
-    width 560ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 460ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 220ms ease,
-    filter 320ms ease;
-  filter: drop-shadow(0 16px 30px rgba(20, 26, 38, 0.16));
-  cursor: pointer;
-}
-
-.fpfa-rolodex-card.is-active {
-  filter: drop-shadow(0 28px 42px rgba(20, 26, 38, 0.2));
-}
-
-.fpfa-rolodex-card-inner {
-  position: relative;
-  width: 100%;
+.fpfa-reader-shell {
+  width: min(100%, 1120px);
   height: 100%;
-  transform-style: preserve-3d;
-  transition: transform 720ms cubic-bezier(0.22, 1, 0.36, 1);
+  min-height: 0;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  gap: 20px;
 }
 
-.fpfa-rolodex-card.is-quotes .fpfa-rolodex-card-inner {
-  transform: rotateY(180deg);
+.fpfa-article-rail,
+.fpfa-active-card {
+  min-width: 0;
+  min-height: 0;
 }
 
-.fpfa-rolodex-face {
-  position: absolute;
-  inset: 0;
+.fpfa-article-rail {
   display: flex;
   flex-direction: column;
-  background: #ffffff;
-  border-radius: 22px;
-  border: 1px solid #dddddd;
-  backface-visibility: hidden;
-  overflow: hidden;
 }
 
-.fpfa-rolodex-back {
-  transform: rotateY(180deg);
+.fpfa-rail-heading {
+  margin: 4px 8px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+  letter-spacing: .08em;
+  text-transform: uppercase;
 }
 
-.fpfa-rolodex-card.is-stacked .fpfa-rolodex-body {
-  opacity: 0;
-  transform: translateY(-20px);
+.fpfa-rail-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 8px 12px 4px;
+  scrollbar-gutter: stable;
 }
 
-.fpfa-rolodex-card.is-stacked .fpfa-rolodex-header {
-  padding-bottom: 10px;
-}
-
-.fpfa-rolodex-card.is-stacked .fpfa-rolodex-title {
-  font-size: 18px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.fpfa-rolodex-card.is-stacked .fpfa-rolodex-meta {
-  opacity: 0.68;
-}
-
-.fpfa-rolodex-header {
-  padding: 14px 16px 12px;
-  border-bottom: 1px solid #dddddd;
-}
-
-.fpfa-rolodex-header.fp {
-  background: linear-gradient(180deg, #ffd8d8 0%, #ffcaca 100%);
-}
-
-.fpfa-rolodex-header.fa {
-  background: linear-gradient(180deg, #daf2ff 0%, #ccecff 100%);
-}
-
-.fpfa-rolodex-header-row {
+.fpfa-preview {
+  width: calc(100% - var(--stack-offset));
+  min-height: 72px;
+  margin: 0 0 8px var(--stack-offset);
+  padding: 10px 12px;
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.fpfa-rolodex-title {
-  margin: 0;
-  color: #171717;
-  font: 700 20px/1.08 Georgia, "Times New Roman", serif;
-}
-
-.fpfa-rolodex-date {
-  flex: 0 0 auto;
-  color: #7b7b7b;
-  font: 12px/1.2 Arial, sans-serif;
-}
-
-.fpfa-rolodex-meta {
-  margin-top: 6px;
-  color: #595959;
-  font: 13px/1.3 Arial, sans-serif;
-}
-
-.fpfa-rolodex-body {
-  flex: 1;
-  padding: 16px 18px 18px;
-  overflow: auto;
-  color: #1c1c1c;
-  transition:
-    opacity 260ms ease,
-    transform 460ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.fpfa-rolodex-thesis {
-  font: 400 17px/1.52 Georgia, "Times New Roman", serif;
-}
-
-.fpfa-rolodex-abstract {
-  max-height: 0;
-  opacity: 0;
-  overflow: hidden;
-  transform: translateY(-12px);
-  transition:
-    max-height 520ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 280ms ease,
-    transform 520ms cubic-bezier(0.22, 1, 0.36, 1),
-    margin-top 520ms cubic-bezier(0.22, 1, 0.36, 1),
-    padding-top 520ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.fpfa-rolodex-abstract.is-visible {
-  max-height: 420px;
-  opacity: 1;
-  transform: translateY(0);
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid #dddddd;
-}
-
-.fpfa-rolodex-abstract p {
-  margin: 0;
-  color: #525252;
-  font: 15px/1.56 Arial, sans-serif;
-}
-
-.fpfa-rolodex-quotes {
-  display: grid;
   gap: 10px;
-}
-
-.fpfa-rolodex-quote {
-  padding: 12px 14px;
-  border: 1px solid #dddddd;
+  text-align: left;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #f8f9fa;
-  color: #535353;
-  font: italic 15px/1.5 Georgia, "Times New Roman", serif;
+  box-shadow: 0 3px 10px rgba(23, 33, 43, .06);
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease;
 }
 
-@media (max-width: 720px) {
-  .fpfa-rolodex-scene {
-    width: min(94vw, 430px);
-    height: 720px;
-    transform: rotateX(6deg);
-  }
+.fpfa-preview:hover { transform: translateY(-1px); border-color: #8ca4b5; }
+.fpfa-preview.is-active { background: #e7f0f6; border: 2px solid var(--primary); }
 
-  .fpfa-rolodex-face {
-    border-radius: 18px;
-  }
+.fpfa-source-mark {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 8px;
+  color: white;
+  font-size: 11px;
+  font-weight: 800;
+}
+.fpfa-source-mark.is-fp { background: #8f2d22; }
+.fpfa-source-mark.is-fa { background: #175a7a; }
 
-  .fpfa-rolodex-card.is-stacked .fpfa-rolodex-title {
-    font-size: 15px;
-  }
+.fpfa-preview-copy { min-width: 0; display: grid; gap: 3px; }
+.fpfa-preview-order { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .05em; }
+.fpfa-preview-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
 
-  .fpfa-rolodex-title {
-    font-size: 16px;
-  }
+.fpfa-active-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(23, 33, 43, .10);
+}
 
-  .fpfa-rolodex-meta {
-    font-size: 12px;
-  }
+.fpfa-card-header { padding: 18px 22px 16px; border-bottom: 1px solid var(--line); }
+.fpfa-card-header.is-fp { background: var(--fp); }
+.fpfa-card-header.is-fa { background: var(--fa); }
+.fpfa-eyebrow { display: flex; justify-content: space-between; gap: 16px; color: #32404d; font-size: 12px; font-weight: 700; }
+.fpfa-source-name { text-transform: uppercase; letter-spacing: .05em; }
+.fpfa-date { white-space: nowrap; }
+.fpfa-active-title {
+  margin: 10px 0 5px;
+  max-width: 780px;
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(22px, 3vw, 32px);
+  font-weight: 700;
+  letter-spacing: -.02em;
+  line-height: 1.16;
+  overflow-wrap: anywhere;
+}
+.fpfa-author { margin: 0; color: var(--muted); font-size: 14px; }
 
-  .fpfa-rolodex-thesis {
-    font-size: 16px;
-    line-height: 1.48;
-  }
+.fpfa-section-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 12px 16px 8px;
+}
+.fpfa-section-tab,
+.fpfa-nav-button {
+  min-height: 44px;
+  padding: 9px 12px;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.fpfa-section-tab.is-active { color: var(--primary); background: #e7f0f6; border-color: var(--primary); }
+.fpfa-nav-button:disabled { opacity: .42; cursor: not-allowed; }
+
+.fpfa-card-scroll { flex: 1; min-height: 0; overflow: auto; }
+.fpfa-section-panel { max-width: 800px; padding: 14px 22px 24px; outline: none; }
+.fpfa-summary-copy { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 17px; line-height: 1.62; white-space: pre-line; }
+.fpfa-evidence-list { display: grid; gap: 12px; }
+.fpfa-evidence-item {
+  margin: 0;
+  padding: 14px 16px;
+  color: #34414d;
+  background: #f5f7f8;
+  border: 1px solid var(--line);
+  border-left: 4px solid #8ca4b5;
+  border-radius: 10px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 16px;
+  font-style: italic;
+  line-height: 1.55;
+}
+
+.fpfa-card-footer { padding: 8px 12px 12px; border-top: 1px solid var(--line); }
+.fpfa-article-navigation { display: grid; grid-template-columns: auto minmax(110px, 1fr) auto; align-items: center; gap: 8px; }
+.fpfa-counter { color: var(--muted); font-size: 12px; font-weight: 650; text-align: center; }
+.fpfa-source-link {
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  background: var(--primary);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+.fpfa-source-link:hover { background: #0f3b59; }
+
+.fpfa-reader-host button:focus-visible,
+.fpfa-reader-host a:focus-visible,
+.fpfa-reader-host [tabindex]:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.fpfa-sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+@media (max-width: 759px) {
+  .fpfa-reader-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: 104px minmax(0, 1fr); gap: 8px; }
+  .fpfa-rail-heading { margin: 0 4px 5px; }
+  .fpfa-rail-list { display: flex; gap: 8px; padding: 2px 4px 8px; overflow-x: auto; overflow-y: hidden; }
+  .fpfa-preview { flex: 0 0 208px; width: 208px; min-height: 72px; margin: 0; }
+  .fpfa-active-card { border-radius: 16px; }
+  .fpfa-card-header { padding: 14px 16px 12px; }
+  .fpfa-active-title { font-size: clamp(20px, 6.2vw, 27px); }
+  .fpfa-section-tabs { padding: 8px 8px 4px; gap: 4px; }
+  .fpfa-section-tab { padding-inline: 6px; font-size: 13px; }
+  .fpfa-section-panel { padding: 12px 16px 20px; }
+  .fpfa-summary-copy { font-size: 16px; line-height: 1.56; }
+  .fpfa-card-footer { padding: 6px 8px 8px; }
+  .fpfa-article-navigation { grid-template-columns: auto 1fr auto; gap: 4px; }
+  .fpfa-nav-button { padding-inline: 9px; font-size: 13px; }
+  .fpfa-counter { font-size: 11px; }
+  .fpfa-source-link { margin-top: 6px; }
+}
+
+@media (max-width: 359px) {
+  .fpfa-card-header { padding-inline: 12px; }
+  .fpfa-section-tab { font-size: 12px; }
+  .fpfa-counter { max-width: 82px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fpfa-rolodex-card,
-  .fpfa-rolodex-card-inner,
-  .fpfa-rolodex-body,
-  .fpfa-rolodex-abstract {
-    transition-duration: 0.01ms !important;
-  }
+  .fpfa-preview { transition: none; }
 }
-''';
 
-    html.document.head?.append(style);
+@media (forced-colors: active) {
+  .fpfa-preview.is-active,
+  .fpfa-section-tab.is-active { border-width: 3px; }
+}
+''',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 720;
-    return SizedBox(
-      width: isMobile ? MediaQuery.of(context).size.width - 20 : 920,
-      height: isMobile ? 720 : 860,
-      child: HtmlElementView(viewType: _viewType),
+    return Semantics(
+      label: 'Article reader',
+      child: SizedBox.expand(child: HtmlElementView(viewType: _viewType)),
     );
-  }
-}
-
-class _DeckDomCard {
-  final int index;
-  final html.DivElement root;
-  final html.DivElement abstractBlock;
-
-  _DeckDomCard({
-    required this.index,
-    required this.root,
-    required this.abstractBlock,
-  });
-
-  factory _DeckDomCard.fromArticle({
-    required int index,
-    required Article article,
-    required VoidCallback onTap,
-  }) {
-    final root = html.DivElement()..className = 'fpfa-rolodex-card';
-    final inner = html.DivElement()..className = 'fpfa-rolodex-card-inner';
-
-    final front = html.DivElement()..className = 'fpfa-rolodex-face';
-    final back = html.DivElement()
-      ..className = 'fpfa-rolodex-face fpfa-rolodex-back';
-
-    final frontHeader = _buildHeader(article);
-    final backHeader = _buildHeader(article);
-
-    final frontBody = html.DivElement()..className = 'fpfa-rolodex-body';
-    final thesis = html.DivElement()
-      ..className = 'fpfa-rolodex-thesis'
-      ..text = article.coreThesis;
-    final abstractBlock = html.DivElement()
-      ..className = 'fpfa-rolodex-abstract';
-    abstractBlock.append(
-      html.ParagraphElement()..text = article.detailedAbstract,
-    );
-    frontBody
-      ..append(thesis)
-      ..append(abstractBlock);
-
-    final backBody = html.DivElement()
-      ..className = 'fpfa-rolodex-body fpfa-rolodex-quotes';
-    final quotes = article.quotes.isEmpty
-        ? ['No supporting quotations were available for this article.']
-        : article.quotes.take(5);
-    for (final quote in quotes) {
-      backBody.append(
-        html.DivElement()
-          ..className = 'fpfa-rolodex-quote'
-          ..text = quote,
-      );
-    }
-
-    front
-      ..append(frontHeader)
-      ..append(frontBody);
-    back
-      ..append(backHeader)
-      ..append(backBody);
-
-    inner
-      ..append(front)
-      ..append(back);
-    root.append(inner);
-    root.onClick.listen((_) => onTap());
-
-    return _DeckDomCard(
-      index: index,
-      root: root,
-      abstractBlock: abstractBlock,
-    );
-  }
-
-  static html.DivElement _buildHeader(Article article) {
-    final header = html.DivElement()
-      ..className =
-          'fpfa-rolodex-header ${article.source == 'Foreign Policy' ? 'fp' : 'fa'}';
-    final row = html.DivElement()..className = 'fpfa-rolodex-header-row';
-    final title = html.HeadingElement.h3()
-      ..className = 'fpfa-rolodex-title'
-      ..text = article.title;
-    final date = html.DivElement()
-      ..className = 'fpfa-rolodex-date'
-      ..text = article.shortDate;
-    row
-      ..append(title)
-      ..append(date);
-
-    final meta = html.DivElement()
-      ..className = 'fpfa-rolodex-meta'
-      ..text = '${article.source} — ${article.author}';
-
-    header
-      ..append(row)
-      ..append(meta);
-    return header;
   }
 }

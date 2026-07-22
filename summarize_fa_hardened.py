@@ -29,6 +29,19 @@ import requests
 from models.sources import ArticleSource
 from services.article_repository import ArticleRepository, resolve_articles_db_path
 from services.publication_dates import extract_publication_date_from_soup
+from services.document_limits import (
+    DocumentBudgetExceeded,
+    collect_bounded_paragraphs,
+    ensure_html_budget,
+)
+from services.outbound_http import (
+    OutboundPolicyError,
+    PublisherPolicy,
+    fetch_publisher_html,
+    playwright_route_allowed,
+    resolve_publisher_url,
+    validate_publisher_url,
+)
 
 # --------------------------------------------------------------------------------------
 # Constants & configuration
@@ -41,6 +54,7 @@ USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/124.0.0.0 Safari/537.36"
 )
+PUBLISHER_POLICY = PublisherPolicy(("foreignaffairs.com",))
 
 
 # --------------------------------------------------------------------------------------
@@ -102,7 +116,6 @@ def _cloudflare_blocked(html: str) -> bool:
 
 
 def _fetch_html_via_requests(url: str, max_retries: int) -> str | None:
-    session = requests.Session()
     headers = {
         "User-Agent": USER_AGENT,
         "Accept-Language": "en-US,en;q=0.9",
@@ -111,13 +124,16 @@ def _fetch_html_via_requests(url: str, max_retries: int) -> str | None:
 
     for _ in range(max_retries):
         try:
-            response = session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-            response.raise_for_status()
-            html = response.text
+            html = fetch_publisher_html(
+                url,
+                policy=PUBLISHER_POLICY,
+                headers=headers,
+                timeout=REQUEST_TIMEOUT,
+            )
             if _cloudflare_blocked(html):
                 continue
             return html
-        except requests.RequestException:
+        except (requests.RequestException, OutboundPolicyError, DocumentBudgetExceeded):
             continue
     return None
 
@@ -136,19 +152,27 @@ def _fetch_html_via_playwright(url: str, max_retries: int) -> str | None:
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage"],
+                args=["--disable-dev-shm-usage"],
             )
             context = browser.new_context(
                 user_agent=USER_AGENT,
                 viewport={"width": 1280, "height": 800},
             )
             page = context.new_page()
+            context.route(
+                "**/*",
+                lambda route: route.continue_()
+                if playwright_route_allowed(route.request.url, PUBLISHER_POLICY)
+                else route.abort(),
+            )
             Stealth().apply_stealth_sync(page)
 
             for _ in range(max_retries):
                 try:
+                    validate_publisher_url(url, PUBLISHER_POLICY)
                     page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                    html = page.content()
+                    validate_publisher_url(page.url, PUBLISHER_POLICY)
+                    html = ensure_html_budget(page.content())
                     if _cloudflare_blocked(html):
                         continue
                     return html
@@ -191,7 +215,10 @@ def extract_latest_article_urls(num_links: int = 3) -> List[str]:
         if h_link:
             anchor = h_link.find("a")
             if anchor and anchor.has_attr("href"):
-                url = "https://www.foreignaffairs.com" + anchor["href"]
+                try:
+                    url = resolve_publisher_url(START_URL, anchor["href"], PUBLISHER_POLICY)
+                except OutboundPolicyError:
+                    continue
                 if "podcast" not in url.lower():
                     urls.append(url)
     return urls
@@ -216,7 +243,12 @@ def extract_foreign_affairs_article(url: str) -> Dict[str, str] | None:
     if not article_body:
         text = "Article Text Not Found"
     else:
-        text_parts = [p.get_text(strip=True) for p in article_body.find_all("p")]
+        try:
+            text_parts = collect_bounded_paragraphs(
+                (p.get_text(" ", strip=True) for p in article_body.find_all("p"))
+            )
+        except DocumentBudgetExceeded:
+            return None
         text = "\n\n".join(text_parts)
 
     publication_date = extract_publication_date_from_soup(soup, url=url)

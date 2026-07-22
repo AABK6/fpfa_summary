@@ -50,11 +50,10 @@ class TestSummarizeFAHardened(unittest.TestCase):
             self.assertIn("https://www.foreignaffairs.com/article/2", urls)
 
 class TestSummarizeFP(unittest.TestCase):
-    @patch('requests.get')
-    def test_scrape_fp_article_basic(self, mock_get):
+    @patch('summarize_fp.fetch_publisher_html')
+    def test_scrape_fp_article_basic(self, mock_fetch):
         """Test extraction logic for Foreign Policy."""
-        mock_response = MagicMock()
-        mock_response.text = """
+        mock_fetch.return_value = """
         <html>
             <body>
                 <div class="hed-heading"><h1 class="hed">FP Title</h1></div>
@@ -66,9 +65,8 @@ class TestSummarizeFP(unittest.TestCase):
             </body>
         </html>
         """
-        mock_get.return_value = mock_response
-        
-        result = summarize_fp.scrape_foreignpolicy_article("http://test-fp.com")
+        with patch('summarize_fp._fetch_html_via_playwright', return_value=None):
+            result = summarize_fp.scrape_foreignpolicy_article("https://foreignpolicy.com/test")
         self.assertEqual(result['title'], "FP Title")
         self.assertEqual(result['author'], "FP Author")
         self.assertIn("FP Paragraph", result['text'])
@@ -76,11 +74,10 @@ class TestSummarizeFP(unittest.TestCase):
 
 
 
-    @patch('requests.get')
-    def test_scrape_fp_article_fallback_collects_fuller_body(self, mock_get):
+    @patch('summarize_fp.fetch_publisher_html')
+    def test_scrape_fp_article_fallback_collects_fuller_body(self, mock_fetch):
         """Falls back to generic article container if ungated/gated wrappers are absent."""
-        mock_response = MagicMock()
-        mock_response.text = """
+        mock_fetch.return_value = """
         <html>
             <body>
                 <div class="hed-heading"><h1 class="hed">Fallback Title</h1></div>
@@ -93,20 +90,18 @@ class TestSummarizeFP(unittest.TestCase):
             </body>
         </html>
         """
-        mock_get.return_value = mock_response
-
-        result = summarize_fp.scrape_foreignpolicy_article("http://test-fp-fallback.com")
+        with patch('summarize_fp._fetch_html_via_playwright', return_value=None):
+            result = summarize_fp.scrape_foreignpolicy_article("https://foreignpolicy.com/fallback")
         self.assertEqual(result['title'], "Fallback Title")
         self.assertEqual(result['author'], "Fallback Author")
         self.assertIn("substantial policy analysis", result['text'])
         self.assertIn("historical context", result['text'])
         self.assertNotIn("Read more", result['text'])
 
-    @patch('requests.get')
-    def test_scrape_fp_article_list(self, mock_get):
+    @patch('summarize_fp.fetch_publisher_html')
+    def test_scrape_fp_article_list(self, mock_fetch):
         """Test extracting article list for Foreign Policy."""
-        mock_response = MagicMock()
-        mock_response.text = """
+        mock_fetch.return_value = """
         <html>
             <body>
                 <div class="blog-list-layout">
@@ -122,16 +117,14 @@ class TestSummarizeFP(unittest.TestCase):
             </body>
         </html>
         """
-        mock_get.return_value = mock_response
         urls = summarize_fp.scrape_foreignpolicy_article_list(num_links=5)
         self.assertEqual(len(urls), 2)
         self.assertIn("https://foreignpolicy.com/article/1", urls)
         self.assertIn("https://foreignpolicy.com/article/2", urls)
 
-    @patch('requests.get')
-    def test_scrape_fp_article_prefers_json_ld_date_over_stray_time_tags(self, mock_get):
-        mock_response = MagicMock()
-        mock_response.text = """
+    @patch('summarize_fp.fetch_publisher_html')
+    def test_scrape_fp_article_prefers_json_ld_date_over_stray_time_tags(self, mock_fetch):
+        mock_fetch.return_value = """
         <html>
             <head>
                 <script type="application/ld+json">
@@ -149,11 +142,10 @@ class TestSummarizeFP(unittest.TestCase):
             </body>
         </html>
         """
-        mock_get.return_value = mock_response
-
-        result = summarize_fp.scrape_foreignpolicy_article(
-            "https://foreignpolicy.com/2026/02/19/test-article/"
-        )
+        with patch('summarize_fp._fetch_html_via_playwright', return_value=None):
+            result = summarize_fp.scrape_foreignpolicy_article(
+                "https://foreignpolicy.com/2026/02/19/test-article/"
+            )
         self.assertEqual(result["publication_date"], "2026-02-19")
 
     @patch("summarize_fp.scrape_foreignpolicy_article")

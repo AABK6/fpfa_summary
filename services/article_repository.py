@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from sqlalchemy import Column, create_engine, func, insert, inspect, select, tex
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 
+from services.content_quality import sanitize_generated_text
 from services.publication_dates import coerce_publication_date
 
 
@@ -343,6 +345,39 @@ class _SqlArticleRepository:
             serialized.append(payload)
         return serialized
 
+    def get_latest_article_summaries(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Read only fields allowed by the public API contract."""
+        if limit <= 0:
+            return []
+        stmt = (
+            select(
+                articles_table.c.id,
+                articles_table.c.source,
+                articles_table.c.url,
+                articles_table.c.title,
+                articles_table.c.author,
+                articles_table.c.core_thesis,
+                articles_table.c.detailed_abstract,
+                articles_table.c.supporting_data_quotes,
+                articles_table.c.publication_date,
+                articles_table.c.date_added,
+            )
+            .order_by(articles_table.c.date_added.desc())
+            .limit(limit)
+        )
+        with self.engine.connect() as conn:
+            rows = conn.execute(stmt).mappings().all()
+        serialized: list[dict[str, Any]] = []
+        for row in rows:
+            payload = dict(row)
+            payload["date_added"] = _serialize_value(payload.get("date_added"), field="date_added")
+            payload["publication_date"] = coerce_publication_date(
+                _serialize_value(payload.get("publication_date"), field="publication_date"),
+                url=payload.get("url"),
+            )
+            serialized.append(payload)
+        return serialized
+
     def get_article_by_url(self, url: str) -> dict[str, Any] | None:
         stmt = select(articles_table).where(articles_table.c.url == url).limit(1)
         with self.engine.connect() as conn:
@@ -442,7 +477,9 @@ class _FirestoreArticleRepository:
     def ensure_schema(self) -> None:
         return None
 
-    def _payload_from_doc(self, data: dict[str, Any]) -> dict[str, Any]:
+    def _payload_from_doc(
+        self, data: dict[str, Any], *, include_article_text: bool = True
+    ) -> dict[str, Any]:
         url = str(data.get("url") or "")
         payload = {
             "id": data.get("id") or _stable_article_id(url),
@@ -450,13 +487,14 @@ class _FirestoreArticleRepository:
             "url": url,
             "title": data.get("title"),
             "author": data.get("author"),
-            "article_text": data.get("article_text"),
             "core_thesis": data.get("core_thesis"),
             "detailed_abstract": data.get("detailed_abstract"),
             "supporting_data_quotes": data.get("supporting_data_quotes"),
             "publication_date": coerce_publication_date(data.get("publication_date"), url=url),
             "date_added": data.get("date_added") or _format_date_added(data.get("date_added_ts")),
         }
+        if include_article_text:
+            payload["article_text"] = data.get("article_text")
         return payload
 
     def get_latest_articles(self, limit: int = 20) -> list[dict[str, Any]]:
@@ -470,6 +508,35 @@ class _FirestoreArticleRepository:
             .stream()
         )
         return [self._payload_from_doc(doc.to_dict() or {}) for doc in docs]
+
+    def get_latest_article_summaries(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Use a Firestore field mask so article bodies never cross this boundary."""
+        if limit <= 0:
+            return []
+        fields = (
+            "id",
+            "source",
+            "url",
+            "title",
+            "author",
+            "core_thesis",
+            "detailed_abstract",
+            "supporting_data_quotes",
+            "publication_date",
+            "date_added",
+            "date_added_ts",
+        )
+        docs = (
+            self.collection
+            .select(fields)
+            .order_by("date_added_ts", direction=self._firestore.Query.DESCENDING)
+            .limit(limit)
+            .stream()
+        )
+        return [
+            self._payload_from_doc(doc.to_dict() or {}, include_article_text=False)
+            for doc in docs
+        ]
 
     def get_article_by_url(self, url: str) -> dict[str, Any] | None:
         doc = self.collection.document(_firestore_document_id(url)).get()
@@ -585,6 +652,9 @@ class ArticleRepository:
     def get_latest_articles(self, limit: int = 20) -> list[dict[str, Any]]:
         return self._backend.get_latest_articles(limit=limit)
 
+    def get_latest_article_summaries(self, limit: int = 20) -> list[dict[str, Any]]:
+        return self._backend.get_latest_article_summaries(limit=limit)
+
     def get_article_by_url(self, url: str) -> dict[str, Any] | None:
         return self._backend.get_article_by_url(url)
 
@@ -602,15 +672,17 @@ class ArticleRepository:
         publication_date: str | None = None,
         date_added: Any = None,
     ) -> bool:
+        normalized_title = re.sub(r"\s+", " ", str(title or "")).strip()
+        normalized_author = re.sub(r"\s+", " ", str(author or "")).strip()
         return self._backend.insert_article(
             source=source,
             url=url,
-            title=title,
-            author=author,
+            title=normalized_title,
+            author=normalized_author,
             article_text=article_text,
-            core_thesis=core_thesis,
-            detailed_abstract=detailed_abstract,
-            supporting_data_quotes=supporting_data_quotes,
+            core_thesis=sanitize_generated_text(core_thesis),
+            detailed_abstract=sanitize_generated_text(detailed_abstract),
+            supporting_data_quotes=sanitize_generated_text(supporting_data_quotes),
             publication_date=publication_date,
             date_added=date_added,
         )

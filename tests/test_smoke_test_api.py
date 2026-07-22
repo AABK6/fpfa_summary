@@ -7,11 +7,12 @@ import pytest
 from scripts.smoke_test_api import run_smoke
 
 
-def _mock_response(*, status_code: int, payload):
+def _mock_response(*, status_code: int, payload, headers=None):
     resp = MagicMock()
     resp.status_code = status_code
     resp.json.return_value = payload
     resp.raise_for_status.return_value = None
+    resp.headers = headers or {}
     return resp
 
 
@@ -20,6 +21,7 @@ def test_run_smoke_happy_path(monkeypatch):
         _mock_response(status_code=200, payload={"status": "healthy"}),
         _mock_response(
             status_code=200,
+            headers={"Access-Control-Allow-Origin": "https://ppf-fpfa-summary-prod.web.app"},
             payload=[
                 {
                     "id": 1,
@@ -27,7 +29,6 @@ def test_run_smoke_happy_path(monkeypatch):
                     "url": "https://fa.com/one",
                     "title": "Title",
                     "author": "Author",
-                    "article_text": "Text",
                     "core_thesis": "Core",
                     "detailed_abstract": "Abstract",
                     "supporting_data_quotes": "Quotes",
@@ -38,7 +39,7 @@ def test_run_smoke_happy_path(monkeypatch):
         ),
     ]
 
-    def fake_get(url, timeout):  # noqa: ARG001
+    def fake_get(url, **kwargs):  # noqa: ARG001
         return responses.pop(0)
 
     monkeypatch.setattr("scripts.smoke_test_api.requests.get", fake_get)
@@ -48,10 +49,14 @@ def test_run_smoke_happy_path(monkeypatch):
 def test_run_smoke_missing_keys_raises(monkeypatch):
     responses = [
         _mock_response(status_code=200, payload={"status": "healthy"}),
-        _mock_response(status_code=200, payload=[{"id": 1}]),
+        _mock_response(
+            status_code=200,
+            payload=[{"id": 1}],
+            headers={"Access-Control-Allow-Origin": "https://ppf-fpfa-summary-prod.web.app"},
+        ),
     ]
 
-    def fake_get(url, timeout):  # noqa: ARG001
+    def fake_get(url, **kwargs):  # noqa: ARG001
         return responses.pop(0)
 
     monkeypatch.setattr("scripts.smoke_test_api.requests.get", fake_get)

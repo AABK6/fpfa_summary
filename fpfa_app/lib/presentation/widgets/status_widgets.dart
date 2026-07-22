@@ -5,8 +5,11 @@ class LoadingWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: CircularProgressIndicator(),
+    return const _StatusPanel(
+      semanticLabel: 'Loading the latest summaries',
+      icon: CircularProgressIndicator(),
+      title: 'Loading the latest summaries',
+      message: 'This should only take a moment.',
     );
   }
 }
@@ -23,23 +26,19 @@ class ErrorDisplayWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.error_outline, color: Colors.red, size: 60),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            style: Theme.of(context).textTheme.bodyLarge,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: onRetry,
-            child: const Text('Retry'),
-          ),
-        ],
+    return _StatusPanel(
+      semanticLabel: 'Summaries could not be loaded',
+      icon: Icon(
+        Icons.cloud_off_outlined,
+        color: Theme.of(context).colorScheme.error,
+        size: 40,
+      ),
+      title: 'The summaries are unavailable',
+      message: message,
+      action: FilledButton.icon(
+        onPressed: onRetry,
+        icon: const Icon(Icons.refresh),
+        label: const Text('Try again'),
       ),
     );
   }
@@ -47,25 +46,87 @@ class ErrorDisplayWidget extends StatelessWidget {
 
 class EmptyStateWidget extends StatelessWidget {
   final String message;
+  final VoidCallback? onRetry;
 
   const EmptyStateWidget({
     super.key,
-    this.message = 'No articles found',
+    this.message = 'No summaries have been published yet.',
+    this.onRetry,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.article_outlined, color: Colors.grey, size: 60),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            style: Theme.of(context).textTheme.bodyLarge,
+    return _StatusPanel(
+      semanticLabel: 'No summaries available',
+      icon: const Icon(Icons.article_outlined, size: 40),
+      title: 'Nothing to read yet',
+      message: message,
+      action: onRetry == null
+          ? null
+          : OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Check again'),
+            ),
+    );
+  }
+}
+
+class _StatusPanel extends StatelessWidget {
+  const _StatusPanel({
+    required this.semanticLabel,
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.action,
+  });
+
+  final String semanticLabel;
+  final Widget icon;
+  final String title;
+  final String message;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: semanticLabel,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    icon,
+                    const SizedBox(height: 20),
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.headlineSmall,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      message,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                      textAlign: TextAlign.center,
+                    ),
+                    if (action != null) ...[
+                      const SizedBox(height: 20),
+                      action!,
+                    ],
+                  ],
+                ),
+              ),
+            ),
           ),
-        ],
+        ),
       ),
     );
   }

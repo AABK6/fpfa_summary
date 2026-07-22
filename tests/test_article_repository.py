@@ -142,6 +142,34 @@ def test_repository_insert_get_latest_and_dedupe(tmp_path):
     assert row["title"] == "One"
 
 
+def test_repository_sanitizes_generated_fields_before_write(tmp_path):
+    repo = ArticleRepository(sqlite_path=str(tmp_path / "repo.db"))
+    try:
+        inserted = repo.insert_article(
+            source="Foreign Affairs",
+            url="https://fa.com/clean",
+            title="  A   clean   title  ",
+            author="  An   Author  ",
+            article_text="Raw article text is preserved.",
+            core_thesis="**Core Thesis:** The substantive claim.",
+            detailed_abstract="```markdown\nSummary: The useful summary.\n```",
+            supporting_data_quotes="**Evidence:** A useful quotation.",
+            publication_date="2024-01-01",
+        )
+        row = repo.get_article_by_url("https://fa.com/clean")
+    finally:
+        repo.close()
+
+    assert inserted is True
+    assert row is not None
+    assert row["title"] == "A clean title"
+    assert row["author"] == "An Author"
+    assert row["article_text"] == "Raw article text is preserved."
+    assert row["core_thesis"] == "The substantive claim."
+    assert row["detailed_abstract"] == "The useful summary."
+    assert row["supporting_data_quotes"] == "A useful quotation."
+
+
 def test_repository_normalizes_publication_date_and_repairs_future_values(tmp_path):
     repo = ArticleRepository(sqlite_path=str(tmp_path / "repo.db"))
     try:
@@ -259,6 +287,13 @@ class _FakeQuery:
     def limit(self, value: int) -> "_FakeQuery":
         return _FakeQuery(self._collection, self._iter_rows()[:value])
 
+    def select(self, fields: tuple[str, ...]) -> "_FakeQuery":
+        rows = [
+            {field: row[field] for field in fields if field in row}
+            for row in self._iter_rows()
+        ]
+        return _FakeQuery(self._collection, rows)
+
     def stream(self) -> list[_FakeSnapshot]:
         snapshots: list[_FakeSnapshot] = []
         for document_id, row in self._collection._items(self._rows):
@@ -295,7 +330,7 @@ class _FakeCollection(_FakeQuery):
             for document_id, candidate in self._storage.items():
                 if candidate.get("url") != url:
                     continue
-                indexed_rows.append((document_id, dict(candidate)))
+                indexed_rows.append((document_id, dict(row)))
                 break
         return indexed_rows
 
@@ -369,6 +404,7 @@ def test_repository_supports_firestore_backend(monkeypatch):
             date_added="2024-01-03 03:04:05",
         )
         latest = repo.get_latest_articles(limit=10)
+        public_latest = repo.get_latest_article_summaries(limit=10)
         row = repo.get_article_by_url("https://fa.com/firestore-one")
         assert row is not None
         repo.update_article_publication_date(int(row["id"]), "2024-02-02")
@@ -381,8 +417,31 @@ def test_repository_supports_firestore_backend(monkeypatch):
     assert inserted is True
     assert duplicate is False
     assert [item["title"] for item in latest] == ["Two", "One"]
+    assert [item["title"] for item in public_latest] == ["Two", "One"]
+    assert all("article_text" not in item for item in public_latest)
     assert row is not None
     assert row["publication_date"] == "2024-01-01"
     assert updated is not None
     assert updated["publication_date"] == "2024-02-02"
     assert updated["date_added"] == "2024-02-03 04:05:06"
+
+
+def test_public_summary_projection_never_returns_article_text(tmp_path):
+    repo = ArticleRepository(sqlite_path=str(tmp_path / "projection.db"))
+    try:
+        repo.insert_article(
+            source="Foreign Affairs",
+            url="https://foreignaffairs.com/projection",
+            title="Projection",
+            author="Author",
+            article_text="COPYRIGHTED BODY",
+            core_thesis="Core",
+            detailed_abstract="Abstract",
+            supporting_data_quotes="Quote",
+        )
+        summaries = repo.get_latest_article_summaries(limit=1)
+    finally:
+        repo.close()
+
+    assert len(summaries) == 1
+    assert "article_text" not in summaries[0]

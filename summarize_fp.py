@@ -7,6 +7,17 @@ import os
 from models.sources import ArticleSource
 from services.article_repository import ArticleRepository, resolve_articles_db_path
 from services.publication_dates import extract_publication_date_from_soup
+from services.document_limits import DocumentBudgetExceeded, collect_bounded_paragraphs, ensure_html_budget
+from services.outbound_http import (
+    OutboundPolicyError,
+    PublisherPolicy,
+    fetch_publisher_html,
+    playwright_route_allowed,
+    resolve_publisher_url,
+    validate_publisher_url,
+)
+
+PUBLISHER_POLICY = PublisherPolicy(("foreignpolicy.com",))
 
 # ======= DATABASE IMPORTS AND FUNCTIONS (MINIMAL ADDITION) =======
 ALLOW_TRUNCATED_CONTENT = os.getenv("ALLOW_TRUNCATED_CONTENT", "0") == "1"
@@ -91,7 +102,7 @@ def _collect_paragraphs(container) -> list[str]:
             continue
         seen.add(candidate)
         cleaned_paragraphs.append(candidate)
-    return cleaned_paragraphs
+    return collect_bounded_paragraphs(cleaned_paragraphs)
 
 
 def _extract_fp_article_body(soup: BeautifulSoup) -> str:
@@ -128,12 +139,20 @@ def _fetch_html_via_playwright(url: str) -> str | None:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(
                 headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage"],
+                args=["--disable-dev-shm-usage"],
             )
             context = browser.new_context()
             page = context.new_page()
+            context.route(
+                "**/*",
+                lambda route: route.continue_()
+                if playwright_route_allowed(route.request.url, PUBLISHER_POLICY)
+                else route.abort(),
+            )
+            validate_publisher_url(url, PUBLISHER_POLICY)
             page.goto(url, wait_until="networkidle", timeout=30000)
-            html = page.content()
+            validate_publisher_url(page.url, PUBLISHER_POLICY)
+            html = ensure_html_budget(page.content())
             browser.close()
             return html
     except PWTimeoutError:
@@ -209,10 +228,13 @@ def scrape_foreignpolicy_article(url):
         )
     }
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        html = response.text
-    except requests.exceptions.RequestException as e:
+        html = fetch_publisher_html(
+            url,
+            policy=PUBLISHER_POLICY,
+            headers=headers,
+            timeout=10,
+        )
+    except (requests.exceptions.RequestException, OutboundPolicyError, DocumentBudgetExceeded) as e:
         print(f"Error fetching URL {url}: {e}")
         return None
 
@@ -234,13 +256,19 @@ def scrape_foreignpolicy_article(url):
         else:
             author = "No Author Found"
 
-    article_body = _extract_fp_article_body(soup)
+    try:
+        article_body = _extract_fp_article_body(soup)
+    except DocumentBudgetExceeded:
+        return None
 
     if _is_likely_truncated(article_body):
         rendered_html = _fetch_html_via_playwright(url)
         if rendered_html:
             rendered_soup = BeautifulSoup(rendered_html, "html.parser")
-            rendered_body = _extract_fp_article_body(rendered_soup)
+            try:
+                rendered_body = _extract_fp_article_body(rendered_soup)
+            except DocumentBudgetExceeded:
+                rendered_body = ""
             if len(rendered_body) > len(article_body):
                 article_body = rendered_body
 
@@ -267,10 +295,13 @@ def scrape_foreignpolicy_article_list(num_links=3):
         )
     }
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        html_content = response.text
-    except requests.exceptions.RequestException as e:
+        html_content = fetch_publisher_html(
+            url,
+            policy=PUBLISHER_POLICY,
+            headers=headers,
+            timeout=10,
+        )
+    except (requests.exceptions.RequestException, OutboundPolicyError, DocumentBudgetExceeded) as e:
         print(f"Error fetching article list: {e}")
         return []
 
@@ -284,7 +315,12 @@ def scrape_foreignpolicy_article_list(num_links=3):
         if figure_tag:
             link_tag = figure_tag.find('a')
             if link_tag and 'href' in link_tag.attrs:
-                article_url = link_tag['href']
+                try:
+                    article_url = resolve_publisher_url(
+                        url, link_tag["href"], PUBLISHER_POLICY
+                    )
+                except OutboundPolicyError:
+                    continue
                 article_urls.append(article_url)
                 if len(article_urls) >= num_links:
                     break

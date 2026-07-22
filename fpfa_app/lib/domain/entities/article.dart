@@ -4,6 +4,7 @@ class Article {
   final String title;
   final String author;
   final String date;
+  final String? publicationDate;
   final String coreThesis;
   final String detailedAbstract;
   final List<String> quotes;
@@ -14,15 +15,17 @@ class Article {
     required this.title,
     required this.author,
     required this.date,
+    this.publicationDate,
     required this.coreThesis,
     required this.detailedAbstract,
     required this.quotes,
   });
 
   String get shortDate {
-    final parts = date.split(' ').first.split('-');
-    if (parts.length < 3) return date;
-    final monthNames = [
+    final parsed =
+        DateTime.tryParse(publicationDate ?? '') ?? DateTime.tryParse(date);
+    if (parsed == null) return 'Date unavailable';
+    const monthNames = [
       '',
       'January',
       'February',
@@ -37,8 +40,6 @@ class Article {
       'November',
       'December',
     ];
-    final month = int.tryParse(parts[1]) ?? 0;
-    final day = int.tryParse(parts[2]) ?? 1;
-    return '${monthNames[month]} $day';
+    return '${monthNames[parsed.month]} ${parsed.day}, ${parsed.year}';
   }
 }

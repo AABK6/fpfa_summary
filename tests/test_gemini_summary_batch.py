@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 
 from models.sources import ArticleSource
@@ -299,6 +300,16 @@ def test_successful_batch_writes_all_three_summary_fields(tmp_path):
     batches = _FakeBatches()
     try:
         source = _article("https://example.com/one")
+        source = replace(
+            source,
+            text=(
+                source.text
+                + " The article identifies three constraints. "
+                + "A strategy without choices is only a list."
+                + " The article argues that durable policy needs a clear strategic centre."
+                + " It reconstructs the context, central reasoning, consequences, and conclusion."
+            ),
+        )
         job = prepare_summary_batch(
             repository,
             [source],

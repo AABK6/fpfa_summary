@@ -1,55 +1,132 @@
-name: Deploy Android to Firebase App Distribution
+name: Test and distribute Android
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
     paths:
-      - 'fpfa_app/**'
-      - '.github/workflows/deploy_android.yml'
+      - fpfa_app/**
+      - .github/workflows/deploy_android.yml
   workflow_dispatch:
 
 env:
   GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'ppf-fpfa-summary-prod' }}
   FIREBASE_ANDROID_APP_ID: ${{ vars.FIREBASE_ANDROID_APP_ID || '1:1076204999548:android:d3d96617e2156818764af9' }}
+  API_BASE_URL_PROD: ${{ vars.API_BASE_URL_PROD || 'https://fpfa-summary-api-1076204999548.europe-west1.run.app' }}
+  FLUTTER_VERSION: 3.44.6
 
 jobs:
-  deploy:
+  test-build-distribute:
     runs-on: ubuntu-latest
+    environment:
+      name: Production
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_FIREBASE_SERVICE_ACCOUNT }}
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
-          distribution: 'zulu'
+          distribution: zulu
           java-version: '17'
 
       - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
-          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
 
       - name: Install dependencies
         run: flutter pub get
         working-directory: fpfa_app
 
-      - name: Build APK
-        run: flutter build apk --release
+      - name: Enforce formatting
+        run: dart format --output=none --set-exit-if-changed lib test integration_test
         working-directory: fpfa_app
 
-      - name: Install Firebase CLI
-        run: npm install --global firebase-tools
+      - name: Analyze
+        run: flutter analyze
+        working-directory: fpfa_app
 
-      - name: Upload to Firebase App Distribution
+      - name: Run tests
+        run: flutter test
+        working-directory: fpfa_app
+
+      - name: Verify application boot
+        run: flutter test -d flutter-tester integration_test/app_test.dart
+        working-directory: fpfa_app
+
+      - name: Materialize release signing credentials
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          test -n "${ANDROID_KEYSTORE_BASE64}"
+          test -n "${ANDROID_KEYSTORE_PASSWORD}"
+          test -n "${ANDROID_KEY_ALIAS}"
+          test -n "${ANDROID_KEY_PASSWORD}"
+          printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > fpfa_app/android/app/upload-keystore.jks
+          printf 'storeFile=app/upload-keystore.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "${ANDROID_KEYSTORE_PASSWORD}" "${ANDROID_KEY_ALIAS}" "${ANDROID_KEY_PASSWORD}" \
+            > fpfa_app/android/key.properties
+
+      - name: Build production APK
+        run: flutter build apk --release --dart-define=API_BASE_URL=${API_BASE_URL_PROD}
+        working-directory: fpfa_app
+
+      - name: Verify embedded production endpoint
+        shell: bash
+        run: |
+          APK="fpfa_app/build/app/outputs/flutter-apk/app-release.apk"
+          unzip -Z1 "${APK}" | grep 'libapp.so$' | while read -r LIB; do
+            unzip -p "${APK}" "${LIB}" | strings
+          done > /tmp/fpfa-app-strings.txt
+          grep -F "${API_BASE_URL_PROD}" /tmp/fpfa-app-strings.txt
+          if grep -E 'https?://(10\.0\.2\.2|127\.0\.0\.1|0\.0\.0\.0|localhost)(:[0-9]+)?' /tmp/fpfa-app-strings.txt; then
+            echo "Release APK contains a loopback API endpoint." >&2
+            exit 1
+          fi
+
+      - name: Verify release signature
+        shell: bash
+        run: |
+          APK="fpfa_app/build/app/outputs/flutter-apk/app-release.apk"
+          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          test -x "${APKSIGNER}"
+          "${APKSIGNER}" verify --verbose --print-certs "${APK}" | tee /tmp/apksigner.txt
+          if grep -Fq 'CN=Android Debug' /tmp/apksigner.txt; then
+            echo "Release APK is signed with the Android debug certificate." >&2
+            exit 1
+          fi
+
+      - name: Preserve tested APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fpfa-android-${{ github.sha }}
+          path: fpfa_app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Install pinned Firebase CLI
+        run: npm install --global firebase-tools@15.24.0
+
+      - name: Upload tested APK to Firebase App Distribution
         run: >-
           firebase appdistribution:distribute
           fpfa_app/build/app/outputs/flutter-apk/app-release.apk

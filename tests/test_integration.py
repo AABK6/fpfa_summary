@@ -36,7 +36,11 @@ def integration_service():
     conn.commit()
     conn.close()
 
-    return ArticleService(db_path=TEST_DB)
+    service = ArticleService(db_path=TEST_DB)
+    yield service
+    service.close()
+    if os.path.exists(TEST_DB):
+        os.remove(TEST_DB)
 
 
 @pytest.mark.asyncio
@@ -82,7 +86,6 @@ async def test_full_flow_scraper_to_api(integration_service):
     assert len(data) >= 1
     assert data[0]["title"] == "Integration Title"
     assert data[0]["source"] == ArticleSource.FOREIGN_AFFAIRS.value
+    assert "article_text" not in data[0]
 
     app.dependency_overrides.clear()
-    if os.path.exists(TEST_DB):
-        os.remove(TEST_DB)

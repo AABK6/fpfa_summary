@@ -18,6 +18,7 @@ on:
       - static/**
       - templates/**
       - tests/**
+      - pytest.ini
       - Dockerfile
       - .dockerignore
       - .github/workflows/master_ppfflaskapp.yml
@@ -37,10 +38,10 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Python version
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
           cache: "pip"
@@ -50,27 +51,30 @@ jobs:
 
       - name: Run unit and integration tests
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FPFA_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python -m pytest tests -q
+
+      - name: Compile Python sources
+        run: >-
+          python -m compileall -q
+          app.py main.py update_articles.py summarize_fa_hardened.py summarize_fp.py
+          models services scripts
 
   parser-canary-live:
     runs-on: ubuntu-latest
     needs: build-test
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Python version
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
           cache: "pip"
 
       - name: Install parser canary dependencies
-        run: |
-          pip install \
-            beautifulsoup4 requests google-genai \
-            playwright playwright-stealth SQLAlchemy
+        run: pip install -r requirements.txt
 
       - name: Install Playwright browser
         run: python -m playwright install --with-deps chromium
@@ -91,16 +95,16 @@ jobs:
       prod_url: ${{ steps.deploy.outputs.service_url }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
 
       - name: Configure Docker auth
         run: gcloud auth configure-docker "${{ env.GCP_REGION }}-docker.pkg.dev" --quiet
@@ -122,9 +126,13 @@ jobs:
             --tag "${IMAGE}" \
             --gcs-log-dir="gs://ppf-fpfa-summary-prod-cloudbuild-logs"
 
-      - name: Deploy to Cloud Run
-        id: deploy
+      - name: Deploy candidate revision without traffic
         run: |
+          SERVICE_JSON="$(gcloud run services describe "${GCP_BACKEND_SERVICE}" --region "${GCP_REGION}" --format=json)"
+          PREVIOUS_REVISION="$(printf '%s' "${SERVICE_JSON}" | jq -r '.status.traffic[] | select(.percent == 100) | .revisionName' | head -n 1)"
+          TAG="candidate-${GITHUB_RUN_ID}"
+          echo "PREVIOUS_REVISION=${PREVIOUS_REVISION}" >> "${GITHUB_ENV}"
+          echo "CANDIDATE_TAG=${TAG}" >> "${GITHUB_ENV}"
           gcloud run deploy "${GCP_BACKEND_SERVICE}" \
             --image "${IMAGE}" \
             --platform managed \
@@ -134,26 +142,30 @@ jobs:
             --min-instances 0 \
             --max-instances 1 \
             --memory 512Mi \
+            --no-traffic \
+            --tag "${TAG}" \
             --set-env-vars "ARTICLE_STORE=firestore,FIRESTORE_PROJECT_ID=${GCP_PROJECT_ID},ARTICLES_COLLECTION=${ARTICLES_COLLECTION}"
 
-          URL="$(gcloud run services describe "${GCP_BACKEND_SERVICE}" --region "${GCP_REGION}" --format='value(status.url)')"
-          echo "service_url=${URL}" >> "${GITHUB_OUTPUT}"
+          SERVICE_JSON="$(gcloud run services describe "${GCP_BACKEND_SERVICE}" --region "${GCP_REGION}" --format=json)"
+          CANDIDATE_URL="$(printf '%s' "${SERVICE_JSON}" | jq -r --arg tag "${TAG}" '.status.traffic[] | select(.tag == $tag) | .url')"
+          test -n "${CANDIDATE_URL}"
+          echo "CANDIDATE_URL=${CANDIDATE_URL}" >> "${GITHUB_ENV}"
 
-  smoke-production:
-    runs-on: ubuntu-latest
-    needs: deploy-production
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install smoke test dependency
-        run: pip install requests
-
-      - name: Run production smoke tests
+      - name: Smoke candidate, promote, and verify production
+        id: deploy
         run: |
-          python scripts/smoke_test_api.py --base-url "${{ needs.deploy-production.outputs.prod_url }}"
+          pip install requests==2.33.0
+          python scripts/smoke_test_api.py --base-url "${CANDIDATE_URL}"
+          gcloud run services update-traffic "${GCP_BACKEND_SERVICE}" \
+            --region "${GCP_REGION}" \
+            --to-tags "${CANDIDATE_TAG}=100"
+          URL="$(gcloud run services describe "${GCP_BACKEND_SERVICE}" --region "${GCP_REGION}" --format='value(status.url)')"
+          if ! python scripts/smoke_test_api.py --base-url "${URL}"; then
+            if [ -n "${PREVIOUS_REVISION}" ]; then
+              gcloud run services update-traffic "${GCP_BACKEND_SERVICE}" \
+                --region "${GCP_REGION}" \
+                --to-revisions "${PREVIOUS_REVISION}=100"
+            fi
+            exit 1
+          fi
+          echo "service_url=${URL}" >> "${GITHUB_OUTPUT}"

@@ -11,7 +11,6 @@ REQUIRED_ARTICLE_KEYS = {
     "url",
     "title",
     "author",
-    "article_text",
     "core_thesis",
     "detailed_abstract",
     "supporting_data_quotes",
@@ -80,6 +79,17 @@ def test_flask_api_articles_contract(flask_client_with_db):
     assert isinstance(data, list)
     assert data, "Expected fixture-seeded results, got empty list"
     assert REQUIRED_ARTICLE_KEYS.issubset(data[0].keys())
+    assert "article_text" not in data[0]
+
+
+def test_flask_api_articles_honors_bounded_limit(flask_client_with_db):
+    response = flask_client_with_db.get("/api/articles?limit=2")
+    assert response.status_code == 200
+    assert len(response.get_json()) == 2
+
+    assert flask_client_with_db.get("/api/articles?limit=0").status_code == 400
+    assert flask_client_with_db.get("/api/articles?limit=51").status_code == 400
+    assert flask_client_with_db.get("/api/articles?limit=nope").status_code == 400
 
 
 def test_flask_api_articles_order_and_source_normalization(flask_client_with_db):

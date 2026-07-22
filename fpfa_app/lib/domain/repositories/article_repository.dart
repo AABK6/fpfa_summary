@@ -1,5 +1,5 @@
-import '../entities/article.dart';
+import '../entities/article_feed.dart';
 
 abstract class ArticleRepository {
-  Future<List<Article>> getLatestArticles({int limit = 20});
+  Future<ArticleFeed> getLatestArticles({int limit = 20});
 }

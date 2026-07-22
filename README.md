@@ -1,200 +1,129 @@
 # FPFA Summary
 
-Foreign Policy / Foreign Affairs article ingestion plus a small API and Flutter client.
+FPFA collects articles from *Foreign Policy* and *Foreign Affairs*, produces structured summaries, serves a small public API, and presents them in a responsive Flutter reader.
 
-This README reflects the repository as it exists on July 22, 2026.
+## Production topology
 
-## Repository Structure
+| Component | Current target |
+| --- | --- |
+| Web reader | `https://ppf-fpfa-summary-prod.web.app` |
+| Public API | `https://fpfa-summary-api-1076204999548.europe-west1.run.app` |
+| Article store | Firestore in `ppf-fpfa-summary-prod` |
+| Scheduled ingestion | GitHub Actions, every four hours |
+| Android distribution | Firebase App Distribution |
 
-- `update_articles.py`: shared asynchronous ingestion entrypoint.
-- `summarize_fa_hardened.py`: Foreign Affairs scraper and single-source compatibility entrypoint.
-- `summarize_fp.py`: Foreign Policy scraper and single-source compatibility entrypoint.
-- `services/gemini_summary_batch.py`: one structured summary request per article and Gemini Batch reconciliation.
+The old `pressreview-458312.web.app` host is a legacy endpoint. A permanent redirect is prepared in `firebase.legacy.json`, but it must be deployed separately after approval.
+
+## Repository map
+
+- `update_articles.py`: shared asynchronous ingestion entry point.
+- `summarize_fa_hardened.py`, `summarize_fp.py`: source scrapers and single-source compatibility entry points.
+- `services/gemini_summary_batch.py`: structured Gemini Batch submission and reconciliation.
 - `services/summary_batch_repository.py`: persistent batch ledger for Firestore or SQL/SQLite.
-- `app.py`: Flask API and server-rendered homepage, default local port `5000`.
-- `main.py`: FastAPI variant of the API, default local port `8000`.
-- `services/`: article storage, publication-date normalization, service layer.
-- `scripts/`: migration, parser canary, smoke tests, repair utilities.
-- `fpfa_app/`: Flutter client for web/mobile.
+- `services/`: storage, normalization, sanitization, and deduplication.
+- `app.py`: production Flask service, port `5000` locally.
+- `main.py`: FastAPI-compatible service, port `8000` locally.
+- `fpfa_app/`: Flutter web and mobile reader.
+- `scripts/smoke_test_api.py`: deployed API contract check.
+- `scripts/smoke_test_web.py`: responsive browser and accessibility smoke check.
+- `docs/DEPLOYMENT.md`: deployment, verification, redirect, and rollback runbook.
 
-## Verified Deployment Topology
+## Public API
 
-The repository is now wired for the cheapest practical GCP path:
+`GET /api/articles?limit=20` returns newest-first summaries. `limit` must be between 1 and 50. The public response intentionally excludes `article_text`; the reader only needs the title, provenance, thesis, abstract, evidence, and dates.
 
-| Component | Where it runs | Defined by |
-| --- | --- | --- |
-| Scheduled ingestion (`Update articles`) | GitHub-hosted Actions runner writing into GCP Firestore | `.github/workflows/update_articles.yml` |
-| Backend deploy CI | GitHub-hosted Actions runner | `.github/workflows/master_ppfflaskapp.yml` |
-| Production backend target | Google Cloud Run | `.github/workflows/master_ppfflaskapp.yml` |
-| Production web frontend target | Firebase Hosting | `.github/workflows/deploy_flutter_static_web_apps.yml` + `firebase.json` |
-| Android distribution | Firebase App Distribution | `.github/workflows/deploy_android.yml` |
-| Production article store | Firestore Native (`articles` collection by default) | `services/article_repository.py` + workflow env |
-| Local development store | SQLite `articles.db` unless env overrides it | `services/article_repository.py` |
+The service also:
 
-Important clarification:
+- removes duplicate URLs and same-source titles while preserving the newest row;
+- strips common prompt labels and Markdown wrappers from generated fields;
+- skips malformed rows instead of failing the whole feed;
+- allows only the production Firebase origins and explicit localhost origins in browsers;
+- caches successful public responses for five minutes.
 
-- Azure is no longer the intended production path in this branch.
-- The backend and frontend deployment workflows now target GCP / Firebase.
-- The scheduled ingestion job still runs on GitHub Actions because that is the lowest-bill runner, but it writes into Firestore in GCP.
+## Local backend
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full operations view.
+PowerShell:
 
-## Why This Is The Lowest-Bill Setup
-
-- Cloud Run can scale to zero, so there is no always-on VM bill for the API.
-- Firestore avoids the baseline monthly cost of Cloud SQL.
-- Firebase Hosting is the cheapest fit for the static Flutter web build.
-- Android distribution stays on Firebase App Distribution, which the repo already used.
-
-## Running Locally
-
-Install Python dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-### Flask app
-
-```bash
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 python app.py
 ```
 
-- Binds to `http://localhost:5000`
-- Endpoints:
-  - `GET /health`
-  - `GET /api/articles`
-  - `GET /`
+Then open `http://localhost:5000`, or inspect:
 
-### FastAPI app
-
-```bash
-python main.py
+```powershell
+Invoke-RestMethod http://localhost:5000/health
+Invoke-RestMethod 'http://localhost:5000/api/articles?limit=5'
 ```
 
-- Binds to `http://localhost:8000`
-- Endpoints:
-  - `GET /health`
-  - `GET /api/articles`
-  - `GET /`
-  - `GET /docs`
-  - `GET /redoc`
+SQLite is the local default. Override it with `ARTICLES_DB_PATH`, `FPFA_DB_PATH`, or `DATABASE_URL`.
 
-## Storage Behavior
+## Ingestion
 
-- If `ARTICLE_STORE=firestore`, the backend and ingestion scripts use Firestore.
-- Firestore config comes from:
-  - `FIRESTORE_PROJECT_ID`
-  - `ARTICLES_COLLECTION` (default: `articles`)
-- If `DATABASE_URL` is set to a SQLAlchemy/SQLite URL, the backend uses that database.
-- Otherwise the app falls back to local SQLite.
-- Local SQLite path resolution:
-  - `ARTICLES_DB_PATH`
-  - `FPFA_DB_PATH`
-  - fallback: `articles.db` in the repo root
+The scheduled job uses one entry point for both publications:
 
-The storage layer lives in `services/article_repository.py`.
-
-## Running Ingestion Scripts
-
-GitHub Actions calls one entrypoint for both publications:
-
-```bash
+```powershell
+$env:FPFA_GEMINI_API_KEY = 'your-key'
+$env:FPFA_GEMINI_MODEL = 'gemini-3.6-flash'
 python update_articles.py 7
 ```
 
-Each run first retrieves results from earlier asynchronous jobs, then scrapes new
-articles and submits all of them in one Gemini Batch. Each article has one
-structured request returning the thesis, detailed abstract, and supporting facts
-and quotations. Completed results are normally written into the article store on
-the next four-hour run.
+Each run first reconciles earlier asynchronous jobs, then scrapes new articles and submits one Gemini Batch. Completed summaries are normally written on a later four-hour run. Prepared requests and stable hashes are persisted before any provider call, so an interrupted run can reconcile instead of paying twice.
 
-The publication-specific commands remain available and use the same batch path:
+The source-specific compatibility commands use the same batch path:
 
-```bash
-python summarize_fa_hardened.py 7
-python summarize_fp.py 7
-```
-
-Required environment for real summarization:
-
-```bash
-export FPFA_GEMINI_API_KEY=your_key_here
-export FPFA_GEMINI_MODEL=gemini-3.6-flash
-```
-
-Firestore target:
-
-```bash
-export ARTICLE_STORE=firestore
-export FIRESTORE_PROJECT_ID=pressreview-458312
-export ARTICLES_COLLECTION=articles
-```
-
-Local SQLite fallback:
-
-```bash
-unset ARTICLE_STORE
-unset FIRESTORE_PROJECT_ID
+```powershell
 python summarize_fa_hardened.py 1
+python summarize_fp.py 1
 ```
 
-## Running The Flutter App
+SQLite is the local fallback. To target production Firestore, also set:
 
-From `fpfa_app/`:
+```powershell
+$env:ARTICLE_STORE = 'firestore'
+$env:FIRESTORE_PROJECT_ID = 'ppf-fpfa-summary-prod'
+$env:ARTICLES_COLLECTION = 'articles'
+```
 
-```bash
+`GEMINI_API_KEY` remains a compatibility fallback; new configuration should use `FPFA_GEMINI_API_KEY`.
+
+## Flutter reader
+
+CI uses Flutter `3.44.6`. Release builds default to the production HTTPS API. Debug builds default to Flask on `localhost:5000`, or `10.0.2.2:5000` in the Android emulator.
+
+```powershell
+Set-Location fpfa_app
 flutter pub get
-flutter run
-```
-
-The Flutter app resolves its backend base URL like this:
-
-- `API_BASE_URL` compile-time define if provided
-- otherwise Android emulator fallback: `http://10.0.2.2:8000`
-- otherwise local fallback: `http://localhost:8000`
-
-Examples:
-
-```bash
-flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:5000
-flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8000
-flutter build web --dart-define=API_BASE_URL=https://fpfa-summary-api-1028212947283.europe-west1.run.app
-```
-
-If you run `app.py`, pass `API_BASE_URL=http://localhost:5000`.
-If you run `main.py`, the Flutter default already matches port `8000`.
-
-## Tests
-
-Run the Python test suite:
-
-```bash
-pytest tests -q
-```
-
-Targeted checks:
-
-```bash
-python scripts/live_parser_canary.py
-python scripts/smoke_test_api.py --base-url https://fpfa-summary-api-1028212947283.europe-west1.run.app
-```
-
-Flutter:
-
-```bash
-cd fpfa_app
+dart format --output=none --set-exit-if-changed lib test integration_test
 flutter analyze
 flutter test
+flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:5000
 ```
 
-## Firebase / GCP Files
+Production builds must use HTTPS and reject loopback endpoints:
 
-- `.firebaserc`: default Firebase project `pressreview-458312`
-- `firebase.json`: Firebase Hosting config for the Flutter web build
-- `fpfa_app/android/app/google-services.json`: Android Firebase config
-- `.github/workflows/deploy_android.yml`: APK distribution to Firebase App Distribution
+```powershell
+flutter build web --release --dart-define=API_BASE_URL=https://fpfa-summary-api-1076204999548.europe-west1.run.app
+flutter build apk --release --dart-define=API_BASE_URL=https://fpfa-summary-api-1076204999548.europe-west1.run.app
+```
 
-## Current Documentation Scope
+When the network fails, a timestamped cache is shown with an explicit offline banner. The reader opens on the latest article, supports keyboard arrows, exposes real source links, and adapts from 320-pixel phones to desktop screens.
 
-Older notes in the repo still mention Azure App Service / Azure Static Web Apps. Those are legacy notes, not the active deployment target after this GCP migration.
+## Verification
+
+```powershell
+python -m pytest tests -q
+python scripts/smoke_test_api.py --base-url https://fpfa-summary-api-1076204999548.europe-west1.run.app
+python scripts/smoke_test_web.py --base-url https://ppf-fpfa-summary-prod.web.app --api-base-url https://fpfa-summary-api-1076204999548.europe-west1.run.app
+```
+
+The web smoke test requires Chromium:
+
+```powershell
+python -m playwright install chromium
+```
+
+It verifies the latest title, source link, keyboard navigation, ARIA state, console/network health, and horizontal fit at 320, 390, 768, and 1440 pixels.

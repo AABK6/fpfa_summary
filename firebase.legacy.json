@@ -1,0 +1,17 @@
+{
+  "hosting": {
+    "public": "legacy_redirect",
+    "ignore": [
+      "firebase.legacy.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "redirects": [
+      {
+        "source": "**",
+        "destination": "https://ppf-fpfa-summary-prod.web.app",
+        "type": 301
+      }
+    ]
+  }
+}

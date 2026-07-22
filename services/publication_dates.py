@@ -7,6 +7,8 @@ from typing import Any, Iterable
 
 from bs4 import BeautifulSoup
 
+from services.document_limits import DocumentBudgetExceeded, DocumentLimits
+
 
 DEFAULT_ALLOWED_FUTURE_DAYS = 1
 URL_DATE_RE = re.compile(r"/(?P<year>(?:19|20)\d{2})/(?P<month>\d{2})/(?P<day>\d{2})(?:/|$)")
@@ -115,19 +117,33 @@ def coerce_publication_date(
     return extract_publication_date_from_url(url, now=now, allowed_future_days=allowed_future_days)
 
 
-def _iter_json_nodes(node: Any) -> Iterable[dict[str, Any]]:
-    if isinstance(node, dict):
-        yield node
-        for value in node.values():
-            yield from _iter_json_nodes(value)
-    elif isinstance(node, list):
-        for item in node:
-            yield from _iter_json_nodes(item)
+def _iter_json_nodes(
+    node: Any, *, limits: DocumentLimits | None = None
+) -> Iterable[dict[str, Any]]:
+    active = limits or DocumentLimits.from_env()
+    stack: list[tuple[Any, int]] = [(node, 0)]
+    visited = 0
+    while stack:
+        current, depth = stack.pop()
+        visited += 1
+        if visited > active.json_nodes:
+            raise DocumentBudgetExceeded("JSON_NODE_BUDGET_EXCEEDED")
+        if depth > active.json_depth:
+            raise DocumentBudgetExceeded("JSON_DEPTH_BUDGET_EXCEEDED")
+        if isinstance(current, dict):
+            yield current
+            stack.extend((value, depth + 1) for value in current.values())
+        elif isinstance(current, list):
+            stack.extend((item, depth + 1) for item in current)
 
 
 def _json_ld_date_candidates(soup: BeautifulSoup) -> list[str]:
+    limits = DocumentLimits.from_env()
     candidates: list[str] = []
-    for script in soup.find_all("script", attrs={"type": re.compile(r"ld\+json", re.I)}):
+    scripts = soup.find_all("script", attrs={"type": re.compile(r"ld\+json", re.I)})
+    if len(scripts) > limits.json_scripts:
+        raise DocumentBudgetExceeded("JSON_SCRIPT_BUDGET_EXCEEDED")
+    for script in scripts:
         raw_text = script.string or script.get_text(" ", strip=True)
         if not raw_text:
             continue
@@ -135,15 +151,18 @@ def _json_ld_date_candidates(soup: BeautifulSoup) -> list[str]:
             payload = json.loads(raw_text)
         except json.JSONDecodeError:
             continue
-        for node in _iter_json_nodes(payload):
+        for node in _iter_json_nodes(payload, limits=limits):
             for key in ("datePublished", "dateCreated"):
                 value = node.get(key)
                 if value:
                     candidates.append(str(value))
+                    if len(candidates) > limits.date_candidates:
+                        raise DocumentBudgetExceeded("DATE_CANDIDATE_BUDGET_EXCEEDED")
     return candidates
 
 
 def _meta_date_candidates(soup: BeautifulSoup) -> list[str]:
+    limits = DocumentLimits.from_env()
     selectors = (
         ("meta", {"property": "article:published_time"}),
         ("meta", {"name": "article:published_time"}),
@@ -157,10 +176,13 @@ def _meta_date_candidates(soup: BeautifulSoup) -> list[str]:
         tag = soup.find(tag_name, attrs=attrs)
         if tag and tag.get("content"):
             candidates.append(tag["content"].strip())
+            if len(candidates) > limits.date_candidates:
+                raise DocumentBudgetExceeded("DATE_CANDIDATE_BUDGET_EXCEEDED")
     return candidates
 
 
 def _time_tag_candidates(soup: BeautifulSoup) -> list[str]:
+    limits = DocumentLimits.from_env()
     selectors = (
         ".hed-heading time[datetime]",
         ".topper time[datetime]",
@@ -178,6 +200,8 @@ def _time_tag_candidates(soup: BeautifulSoup) -> list[str]:
                 continue
             seen.add(candidate)
             candidates.append(candidate)
+            if len(candidates) > limits.date_candidates:
+                raise DocumentBudgetExceeded("DATE_CANDIDATE_BUDGET_EXCEEDED")
     return candidates
 
 

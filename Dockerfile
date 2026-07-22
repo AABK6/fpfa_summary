@@ -15,6 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY app.py main.py template_utils.py ./
+COPY models ./models
+COPY services ./services
+COPY static ./static
+COPY templates ./templates
 
 CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "8", "app:app"]

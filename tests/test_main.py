@@ -4,7 +4,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from main import app
-from models.article import Article
+from models.article import ArticleSummary
 
 
 @pytest.mark.asyncio
@@ -19,32 +19,30 @@ async def test_health_check():
 async def test_get_articles_endpoint_ordering():
     mock_service = MagicMock()
     mock_articles = [
-        Article(
+        ArticleSummary(
             id=2,
             source="FP",
             url="https://fp.com/2",
             title="Newest title",
             author="Author 2",
-            article_text="Text",
             core_thesis="Thesis",
             detailed_abstract="Abstract",
             supporting_data_quotes="Quotes",
             date_added="2023-01-02",
         ),
-        Article(
+        ArticleSummary(
             id=1,
             source="FA",
             url="https://fa.com/1",
             title="Older title",
             author="Author 1",
-            article_text="Text",
             core_thesis="Thesis",
             detailed_abstract="Abstract",
             supporting_data_quotes="Quotes",
             date_added="2023-01-01",
         ),
     ]
-    mock_service.get_latest_articles.return_value = mock_articles
+    mock_service.get_latest_article_summaries.return_value = mock_articles
 
     from main import get_article_service
 
@@ -60,38 +58,59 @@ async def test_get_articles_endpoint_ordering():
 
     assert response.status_code == 200
     assert [article["title"] for article in response.json()] == ["Newest title", "Older title"]
+    assert "article_text" not in response.json()[0]
+    mock_service.get_latest_article_summaries.assert_called_once_with(limit=20)
+
+
+@pytest.mark.asyncio
+async def test_get_articles_endpoint_honors_limit():
+    mock_service = MagicMock()
+    mock_service.get_latest_article_summaries.return_value = []
+
+    from main import get_article_service
+
+    async def override_get_article_service():
+        return mock_service
+
+    app.dependency_overrides[get_article_service] = override_get_article_service
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/articles?limit=7")
+        invalid_response = await ac.get("/api/articles?limit=0")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert invalid_response.status_code == 422
+    mock_service.get_latest_article_summaries.assert_called_once_with(limit=7)
 
 
 @pytest.mark.asyncio
 async def test_root_html_top_card_uses_first_article():
     mock_service = MagicMock()
     mock_articles = [
-        Article(
+        ArticleSummary(
             id=2,
             source="FP",
             url="https://fp.com/2",
             title="Newest title",
             author="Author 2",
-            article_text="Text",
             core_thesis="Thesis",
             detailed_abstract="Abstract",
             supporting_data_quotes="Quotes",
             date_added="2023-01-02",
         ),
-        Article(
+        ArticleSummary(
             id=1,
             source="FA",
             url="https://fa.com/1",
             title="Older title",
             author="Author 1",
-            article_text="Text",
             core_thesis="Thesis",
             detailed_abstract="Abstract",
             supporting_data_quotes="Quotes",
             date_added="2023-01-01",
         ),
     ]
-    mock_service.get_latest_articles.return_value = mock_articles
+    mock_service.get_latest_article_summaries.return_value = mock_articles
 
     from main import get_article_service
 
@@ -134,10 +153,10 @@ async def test_docs_accessible():
 )
 async def test_root_html_date_rendering(date_added, expected_display):
     mock_service = MagicMock()
-    mock_service.get_latest_articles.return_value = [
-        Article(
-            id=1, source="Foreign Policy", url="https://test.com", title="Title 1", author="Author 1",
-            article_text="Text", core_thesis="Thesis", detailed_abstract="Abstract",
+    mock_service.get_latest_article_summaries.return_value = [
+        ArticleSummary(
+            id=1, source="Foreign Policy", url="https://foreignpolicy.com/test", title="Title 1", author="Author 1",
+            core_thesis="Thesis", detailed_abstract="Abstract",
             supporting_data_quotes="Quotes", date_added=date_added
         )
     ]
