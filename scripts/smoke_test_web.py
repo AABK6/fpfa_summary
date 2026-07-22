@@ -17,6 +17,18 @@ VIEWPORTS = (
     ("desktop", 1440, 1000),
 )
 
+IGNORED_CONSOLE_ISSUES = re.compile(
+    r"favicon|source map|CPU-only rendering.*WebGL|"
+    r"Automatic fallback to software WebGL has been deprecated|"
+    r"GL Driver Message .*GPU stall due to ReadPixels",
+    flags=re.IGNORECASE,
+)
+
+
+def is_ignored_console_issue(message: str) -> bool:
+    """Ignore only deterministic headless-renderer noise, never app/network errors."""
+    return bool(IGNORED_CONSOLE_ISSUES.search(message))
+
 
 def _expected_articles(api_base_url: str) -> list[dict]:
     response = requests.get(
@@ -182,11 +194,7 @@ def _run_viewport(
     relevant_console_issues = [
         error
         for error in console_issues
-        if not re.search(
-            r"favicon|source map|CPU-only rendering.*WebGL",
-            error,
-            flags=re.IGNORECASE,
-        )
+        if not is_ignored_console_issue(error)
     ]
     if relevant_console_issues:
         raise RuntimeError(

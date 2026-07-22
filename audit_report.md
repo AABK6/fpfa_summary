@@ -15,7 +15,7 @@ Updated July 22, 2026. This file replaces the obsolete January audit; it records
 
 ## Verification
 
-- `python -m pytest tests -q`: 80 passed.
+- `python -m pytest tests -q`: 82 passed.
 - `pip-audit -r requirements.txt`: no known vulnerabilities.
 - `flutter analyze`: no issues.
 - `flutter test` plus the integration boot test: 28 unit/widget tests and one boot test passed.
