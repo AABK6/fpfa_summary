@@ -55,7 +55,13 @@ jobs:
         working-directory: fpfa_app
 
       - name: Compile production web bundle
-        run: flutter build web --release --dart-define=API_BASE_URL=${API_BASE_URL_PROD}
+        run: >-
+          flutter build web --release --no-web-resources-cdn
+          --dart-define=API_BASE_URL=${API_BASE_URL_PROD}
+        working-directory: fpfa_app
+
+      - name: Verify CanvasKit is served by the application
+        run: grep -F '"useLocalCanvasKit":true' build/web/flutter_bootstrap.js
         working-directory: fpfa_app
 
       - name: Preserve tested web bundle

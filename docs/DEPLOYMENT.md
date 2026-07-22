@@ -63,7 +63,7 @@ python scripts/smoke_test_api.py --base-url https://fpfa-summary-api-10762049995
 
 ## Web gate
 
-The workflow pins Flutter `3.44.6` and Firebase CLI `15.24.0`. It enforces formatting, analysis, tests, and a release build, then uploads that exact tested bundle. The deployment job downloads the artifact instead of rebuilding after authentication and waits for the bounded, body-free production API contract before publishing. After deployment, Playwright checks 320, 390, 768, and 1440 pixel viewports and preserves screenshots for 14 days.
+The workflow pins Flutter `3.44.6` and Firebase CLI `15.24.0`. It enforces formatting, analysis, tests, and a release build with local CanvasKit, then uploads that exact tested bundle. The deployment job downloads the artifact instead of rebuilding after authentication and waits for the bounded, body-free production API contract before publishing. After deployment, Playwright checks 320, 390, 768, and 1440 pixel viewports and preserves screenshots for 14 days.
 
 ```powershell
 Set-Location fpfa_app
@@ -71,7 +71,7 @@ flutter pub get
 dart format --output=none --set-exit-if-changed lib test integration_test
 flutter analyze
 flutter test
-flutter build web --release --dart-define=API_BASE_URL=https://fpfa-summary-api-1076204999548.europe-west1.run.app
+flutter build web --release --no-web-resources-cdn --dart-define=API_BASE_URL=https://fpfa-summary-api-1076204999548.europe-west1.run.app
 Set-Location ..
 firebase deploy --project ppf-fpfa-summary-prod --only hosting --non-interactive
 python scripts/smoke_test_web.py --base-url https://ppf-fpfa-summary-prod.web.app --api-base-url https://fpfa-summary-api-1076204999548.europe-west1.run.app

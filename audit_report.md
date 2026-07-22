@@ -19,7 +19,7 @@ Updated July 22, 2026. This file replaces the obsolete January audit; it records
 - `pip-audit -r requirements.txt`: no known vulnerabilities.
 - `flutter analyze`: no issues.
 - `flutter test` plus the integration boot test: 28 unit/widget tests and one boot test passed.
-- Release web and APK builds passed. The APK uses a 4096-bit RSA production certificate, verifies under APK signature schemes v1/v2, contains the production API URL, and contains no loopback API URL.
+- Release web and APK builds passed. The web bundle self-hosts CanvasKit; the CSP permits only the pinned Google Fonts host for Flutter's font fallback. The APK uses a 4096-bit RSA production certificate, verifies under APK signature schemes v1/v2, contains the production API URL, and contains no loopback API URL.
 - The live parser canary passed.
 
 Production is authoritative only after the GitHub deployment workflows and public API/browser smoke tests pass. A green local build is evidence, not magic.
